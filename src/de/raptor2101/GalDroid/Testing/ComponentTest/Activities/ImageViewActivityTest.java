@@ -3,6 +3,7 @@ package de.raptor2101.GalDroid.Testing.ComponentTest.Activities;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 
 import junit.framework.Test;
 import junit.framework.TestSuite;
@@ -14,6 +15,7 @@ import de.raptor2101.GalDroid.Testing.ComponentTest.Gallery3ImplementationTest;
 import de.raptor2101.GalDroid.Testing.ComponentTest.Activities.TestImplementations.TestGalleryObject;
 import de.raptor2101.GalDroid.Testing.ComponentTest.Activities.TestImplementations.TestWebGallery;
 import de.raptor2101.GalDroid.WebGallery.GalleryImageView;
+import de.raptor2101.GalDroid.WebGallery.Tasks.ImageLoaderTask;
 
 import android.content.Context;
 import android.content.Intent;
@@ -30,17 +32,20 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 		super("de.raptor2101.GalDroid.Activities.ImageViewActivity",ImageViewActivity.class);
 	}
 
-	private final int IMAGE_ID = de.raptor2101.GalDroid.test.R.drawable.testpic_1;
+	private final int IMAGE_ID = de.raptor2101.GalDroid.Testing.R.drawable.testpic_1;
 	private final int GALLERY_SAMPLE_SIZE = 300;
 
 	private ImageViewActivity mActivity;
 	private TestWebGallery mWebGallery;
 
-	private Gallery mGalleryFullscreen;
-	private Gallery mGalleryThumbnails;
+	
 
 	private TestGalleryObject mCurrentGallery;
 	private TestGalleryObject mCurrentVisibleChild;
+	
+	private Gallery mGalleryFullscreen;
+	private Gallery mGalleryThumbnails;
+	private View	mImageInformationView;
 
 	@Override
 	protected void setUp() throws Exception {
@@ -65,41 +70,15 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 		
 		mGalleryFullscreen = (Gallery) mActivity.findViewById(R.id.singleImageGallery);
     	mGalleryThumbnails = (Gallery) mActivity.findViewById(R.id.thumbnailImageGallery);
+    	mImageInformationView = (View) mActivity.findViewById(R.id.viewImageInformations);
 		
-		
 
-	}
-
-	private TestWebGallery createTestWebGallery(Resources resources) {
-		TestWebGallery webGallery = new TestWebGallery();
-
-		List<TestGalleryObject> children = new ArrayList<TestGalleryObject>(
-				GALLERY_SAMPLE_SIZE);
-
-		for (int i = 0; i < GALLERY_SAMPLE_SIZE; i++) {
-			String objectId = String.format("TestGalObject %s", i);
-			Date currentDate = new Date(System.currentTimeMillis());
-
-			children.add(new TestGalleryObject(objectId, objectId,
-					currentDate, resources.getDrawable(IMAGE_ID), null));
-		}
-		String objectId = "ParentObject";
-		Date currentDate = new Date(System.currentTimeMillis());
-		List<TestGalleryObject> parents = new ArrayList<TestGalleryObject>(1);
-		parents.add(new TestGalleryObject(objectId, objectId,currentDate, resources.getDrawable(IMAGE_ID), children));
-
-		webGallery.setTestGalleryObjects(parents);
-		
-		mCurrentGallery = parents.get(0);
-		mCurrentVisibleChild = children.get(0);
-		return webGallery;
 	}
 
 	public void testSimpleRun() {
-		assertEquals("The FullscreenGallery isn't visible", View.VISIBLE,
-				mGalleryFullscreen.getVisibility());
-		assertEquals("The ThumbnailGallery is visible", View.GONE,
-				mGalleryThumbnails.getVisibility());
+		assertEquals("The FullscreenGallery isn't visible", View.VISIBLE, mGalleryFullscreen.getVisibility());
+		assertEquals("The ThumbnailGallery is visible", View.GONE, mGalleryThumbnails.getVisibility());
+		assertEquals("The ImageInformationpanel is visible", View.GONE, mImageInformationView.getVisibility());
 
 		try {
 			mWebGallery.waitForGetDisplayObjectsCall();
@@ -107,11 +86,45 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 			fail(e.getMessage());
 		}
 
-		GalleryImageView currentView = (GalleryImageView) mGalleryFullscreen
-				.getSelectedView();
+		GalleryImageView currentView = (GalleryImageView) mGalleryFullscreen.getSelectedView();
 
 		assertNotNull("No current view selected", currentView);
-		assertEquals("The Gallery don't shows the inteted image",
-				mCurrentVisibleChild, currentView.getGalleryObject());
+		assertEquals("The Gallery don't shows the inteted image", mCurrentVisibleChild, currentView.getGalleryObject());
+		
+		ImageLoaderTask imageLoaderTask = currentView.getImageLoaderTask();
+		assertNotNull("There is no imageLoaderTask initialized for the current view",imageLoaderTask);
+		try {
+			imageLoaderTask.get();
+		} catch (InterruptedException e) {
+			fail(e.getMessage());
+		} catch (ExecutionException e) {
+			fail(e.getMessage());
+		}
+		assertEquals("Current view is not loaded but the imageLoaderTask ist finished", true, currentView.isLoaded());
+	}
+
+	private TestWebGallery createTestWebGallery(Resources resources) {
+		TestWebGallery webGallery = new TestWebGallery(resources);
+	
+		List<TestGalleryObject> children = new ArrayList<TestGalleryObject>(
+				GALLERY_SAMPLE_SIZE);
+	
+		for (int i = 0; i < GALLERY_SAMPLE_SIZE; i++) {
+			String objectId = String.format("TestGalObject %s", i);
+			Date currentDate = new Date(System.currentTimeMillis());
+	
+			children.add(new TestGalleryObject(objectId, objectId,
+					currentDate, IMAGE_ID, null));
+		}
+		String objectId = "ParentObject";
+		Date currentDate = new Date(System.currentTimeMillis());
+		List<TestGalleryObject> parents = new ArrayList<TestGalleryObject>(1);
+		parents.add(new TestGalleryObject(objectId, objectId,currentDate, IMAGE_ID, children));
+	
+		webGallery.setTestGalleryObjects(parents);
+		
+		mCurrentGallery = parents.get(0);
+		mCurrentVisibleChild = children.get(0);
+		return webGallery;
 	}
 }

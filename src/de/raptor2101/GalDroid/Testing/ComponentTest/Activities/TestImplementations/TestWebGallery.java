@@ -1,15 +1,26 @@
 package de.raptor2101.GalDroid.Testing.ComponentTest.Activities.TestImplementations;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Semaphore;
 
 import junit.framework.Assert;
+import junit.framework.Test;
 
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
 import org.json.JSONException;
+
+import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 
 import de.raptor2101.GalDroid.WebGallery.GalleryStream;
 import de.raptor2101.GalDroid.WebGallery.Interfaces.GalleryDownloadObject;
@@ -23,9 +34,10 @@ public class TestWebGallery implements WebGallery {
 	private List<TestGalleryObject> mTestGalleryObject;
 
 	private final Semaphore mSemaphore_GetDisplayObjects;
-	
-	public TestWebGallery() {
+	private final Resources mResources;
+	public TestWebGallery(Resources resources) {
 		mSemaphore_GetDisplayObjects = new Semaphore(PERMITS, true);
+		mResources = resources;
 	}
 	
 	public void waitForGetDisplayObjectsCall() throws InterruptedException {
@@ -92,7 +104,7 @@ public class TestWebGallery implements WebGallery {
 			return castedChildren;
 			
 		} else {
-			Assert.fail("Some tries to use non-testing GalleryObjects on testing WebGallery");
+			Assert.fail("Someone tries to use non-testing GalleryObjects on testing WebGallery");
 			return new ArrayList<GalleryObject>(0);
 		}
 	}
@@ -128,8 +140,21 @@ public class TestWebGallery implements WebGallery {
 	@Override
 	public GalleryStream getFileStream(GalleryDownloadObject downloadObject)
 			throws IOException, ClientProtocolException {
-		Assert.fail("Call not implemented TestMethod");
-		return null;
+		if(downloadObject instanceof TestDownloadObject) {
+			TestDownloadObject testDownloadObject = (TestDownloadObject) downloadObject;
+		Assert.assertEquals("Wrong image size requested",TestDownloadObject.ImageSize.Image,testDownloadObject.getRequestedSize());
+		BitmapDrawable drawable = (BitmapDrawable) mResources.getDrawable(testDownloadObject.getResourceId());
+		Bitmap bitmap = (Bitmap)((BitmapDrawable) drawable).getBitmap();
+	    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+	    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream);
+	    byte[] byteArray = outputStream.toByteArray();
+	    InputStream inputStream = new ByteArrayInputStream(byteArray);
+		return new GalleryStream(inputStream, byteArray.length );
+		} else {
+			Assert.fail("Someone tries to use non-testing GalleryObjects on testing WebGallery");
+			return null;
+		}
+		
 	}
 
 	@Override

@@ -11,16 +11,18 @@ import de.raptor2101.GalDroid.WebGallery.Interfaces.GalleryObject;
 public class TestGalleryObject implements GalleryObject {
 
 	private static final long serialVersionUID = -8025907242127852748L;
-	private String mTitle;
-	private Date mDateUploaded;
-	private String mObjectId;
-	private List<TestGalleryObject> mChildren;
+	private final String mTitle;
+	private final Date mDateUploaded;
+	private final String mObjectId;
+	private final int mImageRecourceID;
+	private final List<TestGalleryObject> mChildren;
 	
-	public TestGalleryObject(String objectId, String title, Date dateUploaded, Drawable drawable, List<TestGalleryObject> children) {
+	public TestGalleryObject(String objectId, String title, Date dateUploaded, int imageRecourceID, List<TestGalleryObject> children) {
 		mTitle = title;
 		mDateUploaded = dateUploaded;
 		mObjectId = objectId;
 		mChildren = children;
+		mImageRecourceID = imageRecourceID;
 	}
 	
 	@Override
@@ -45,12 +47,12 @@ public class TestGalleryObject implements GalleryObject {
 
 	@Override
 	public GalleryDownloadObject getImage() {
-		return new TestDownloadObject(mObjectId, null, TestDownloadObject.ImageSize.Image);
+		return new TestDownloadObject(mObjectId, mImageRecourceID, TestDownloadObject.ImageSize.Image);
 	}
 
 	@Override
 	public GalleryDownloadObject getThumbnail() {
-		return new TestDownloadObject(mObjectId, null, TestDownloadObject.ImageSize.Thumbnail);
+		return new TestDownloadObject(mObjectId, mImageRecourceID, TestDownloadObject.ImageSize.Thumbnail);
 	}
 	
 	@Override

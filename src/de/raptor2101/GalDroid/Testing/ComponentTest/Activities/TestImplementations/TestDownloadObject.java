@@ -1,6 +1,5 @@
 package de.raptor2101.GalDroid.Testing.ComponentTest.Activities.TestImplementations;
 
-import android.graphics.drawable.Drawable;
 import de.raptor2101.GalDroid.WebGallery.Interfaces.GalleryDownloadObject;
 
 public class TestDownloadObject implements GalleryDownloadObject {
@@ -10,18 +9,26 @@ public class TestDownloadObject implements GalleryDownloadObject {
 
 	private ImageSize mRequestedSize;
 	private String mObjectId;
-	private Drawable mDrawable;
+	private int mImageRecourceID;
 
-	public TestDownloadObject(String objectId, Drawable drawable,
+	public TestDownloadObject(String objectId, int imageRecourceID,
 			ImageSize requestedSize) {
 		mRequestedSize = requestedSize;
 		mObjectId = objectId;
-		mDrawable = drawable;
+		mImageRecourceID = imageRecourceID;
 	}
 
 	@Override
 	public String getUniqueId() {
 		return String.format("%s-%s", mObjectId, mRequestedSize);
+	}
+	
+	public int getResourceId() {
+		return mImageRecourceID;
+	}
+
+	public ImageSize getRequestedSize() {
+		return mRequestedSize;
 	}
 
 }
