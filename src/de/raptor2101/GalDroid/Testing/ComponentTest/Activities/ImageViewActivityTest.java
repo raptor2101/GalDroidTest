@@ -15,6 +15,7 @@ import de.raptor2101.GalDroid.Testing.ComponentTest.Gallery3ImplementationTest;
 import de.raptor2101.GalDroid.Testing.ComponentTest.Activities.TestImplementations.TestGalleryObject;
 import de.raptor2101.GalDroid.Testing.ComponentTest.Activities.TestImplementations.TestWebGallery;
 import de.raptor2101.GalDroid.WebGallery.GalleryImageView;
+import de.raptor2101.GalDroid.WebGallery.Tasks.GalleryLoaderTask;
 import de.raptor2101.GalDroid.WebGallery.Tasks.ImageLoaderTask;
 
 import android.content.Context;
@@ -79,10 +80,15 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 		assertEquals("The FullscreenGallery isn't visible", View.VISIBLE, mGalleryFullscreen.getVisibility());
 		assertEquals("The ThumbnailGallery is visible", View.GONE, mGalleryThumbnails.getVisibility());
 		assertEquals("The ImageInformationpanel is visible", View.GONE, mImageInformationView.getVisibility());
-
+		
+		GalleryLoaderTask task = mActivity.getDownloadTask();
+		assertNotNull("No DownloadTask created",task);
+		
 		try {
-			mWebGallery.waitForGetDisplayObjectsCall();
+			task.get();
 		} catch (InterruptedException e) {
+			fail(e.getMessage());
+		} catch (ExecutionException e) {
 			fail(e.getMessage());
 		}
 

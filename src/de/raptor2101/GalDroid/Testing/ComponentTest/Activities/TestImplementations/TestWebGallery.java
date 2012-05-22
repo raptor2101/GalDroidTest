@@ -30,18 +30,11 @@ import de.raptor2101.GalDroid.WebGallery.Interfaces.GalleryProgressListener;
 import de.raptor2101.GalDroid.WebGallery.Interfaces.WebGallery;
 
 public class TestWebGallery implements WebGallery {
-	private final int PERMITS = 0; 
 	private List<TestGalleryObject> mTestGalleryObject;
 
-	private final Semaphore mSemaphore_GetDisplayObjects;
 	private final Resources mResources;
 	public TestWebGallery(Resources resources) {
-		mSemaphore_GetDisplayObjects = new Semaphore(PERMITS, true);
 		mResources = resources;
-	}
-	
-	public void waitForGetDisplayObjectsCall() throws InterruptedException {
-		mSemaphore_GetDisplayObjects.acquire();
 	}
 	
 	@Override
@@ -100,7 +93,6 @@ public class TestWebGallery implements WebGallery {
 			for(TestGalleryObject child:children) {
 				castedChildren.add(child);
 			}
-			mSemaphore_GetDisplayObjects.release();
 			return castedChildren;
 			
 		} else {
