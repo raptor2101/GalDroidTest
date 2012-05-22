@@ -5,24 +5,20 @@ import java.util.Date;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
-import junit.framework.Test;
-import junit.framework.TestSuite;
 
 import de.raptor2101.GalDroid.R;
 import de.raptor2101.GalDroid.Activities.GalDroidApp;
 import de.raptor2101.GalDroid.Activities.ImageViewActivity;
-import de.raptor2101.GalDroid.Testing.ComponentTest.Gallery3ImplementationTest;
 import de.raptor2101.GalDroid.Testing.ComponentTest.Activities.TestImplementations.TestGalleryObject;
 import de.raptor2101.GalDroid.Testing.ComponentTest.Activities.TestImplementations.TestWebGallery;
 import de.raptor2101.GalDroid.WebGallery.GalleryImageView;
+import de.raptor2101.GalDroid.WebGallery.Interfaces.GalleryObject;
 import de.raptor2101.GalDroid.WebGallery.Tasks.GalleryLoaderTask;
 import de.raptor2101.GalDroid.WebGallery.Tasks.ImageLoaderTask;
 
-import android.content.Context;
 import android.content.Intent;
 import android.content.res.Resources;
 import android.test.ActivityInstrumentationTestCase2;
-import android.test.ActivityUnitTestCase;
 import android.view.View;
 import android.widget.Gallery;
 
@@ -76,29 +72,48 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 
 	}
 
-	public void testSimpleRun() {
-		assertEquals("The FullscreenGallery isn't visible", View.VISIBLE, mGalleryFullscreen.getVisibility());
-		assertEquals("The ThumbnailGallery is visible", View.GONE, mGalleryThumbnails.getVisibility());
-		assertEquals("The ImageInformationpanel is visible", View.GONE, mImageInformationView.getVisibility());
+	public void testActivityStart() {
+		checkStartUp(View.VISIBLE, View.GONE, View.GONE);
+	}
+
+	public void testScrollTrough() {
+		checkStartUp(View.VISIBLE, View.GONE, View.GONE);
+	}
+	
+	private void checkStartUp(int visibilityFullscreenGallery, int visibilityThumbnailGallery, int ImageInformationPanel) {
+		assertEquals("The FullscreenGallery has wrong Visibility", visibilityFullscreenGallery, mGalleryFullscreen.getVisibility());
+		assertEquals("The ThumbnailGallery has wrong Visibility", visibilityThumbnailGallery, mGalleryThumbnails.getVisibility());
+		assertEquals("The ImageInformationPanel has wrong Visibility", ImageInformationPanel, mImageInformationView.getVisibility());
 		
-		GalleryLoaderTask task = mActivity.getDownloadTask();
-		assertNotNull("No DownloadTask created",task);
-		
-		try {
-			task.get();
-		} catch (InterruptedException e) {
-			fail(e.getMessage());
-		} catch (ExecutionException e) {
-			fail(e.getMessage());
+		if( !mActivity.areGalleryObjectsAvailable()) {
+			GalleryLoaderTask task = mActivity.getDownloadTask();
+			assertNotNull("No DownloadTask created although no gallery object could be loaded from the cache",task);
+			
+			try {
+				task.get();
+			} catch (InterruptedException e) {
+				fail(e.getMessage());
+			} catch (ExecutionException e) {
+				fail(e.getMessage());
+			}
 		}
-
-		GalleryImageView currentView = (GalleryImageView) mGalleryFullscreen.getSelectedView();
-
-		assertNotNull("No current view selected", currentView);
-		assertEquals("The Gallery don't shows the inteted image", mCurrentVisibleChild, currentView.getGalleryObject());
 		
-		ImageLoaderTask imageLoaderTask = currentView.getImageLoaderTask();
-		assertNotNull("There is no imageLoaderTask initialized for the current view",imageLoaderTask);
+		GalleryImageView selectedView = checkSelectedView(mCurrentVisibleChild);
+				
+		checkImageLoaderTask(selectedView);
+	}
+	
+	private GalleryImageView checkSelectedView(GalleryObject galleryObject) {
+		GalleryImageView selectedView = (GalleryImageView) mGalleryFullscreen.getSelectedView();
+
+		assertNotNull("No view selected", selectedView);
+		assertEquals("The Gallery don't shows the inteted image", galleryObject, selectedView.getGalleryObject());
+		return selectedView;
+	}
+	
+	private void checkImageLoaderTask(GalleryImageView galleryImageView) {
+		ImageLoaderTask imageLoaderTask = galleryImageView.getImageLoaderTask();
+		assertNotNull(String.format("There is no imageLoaderTask initialized for the GalleryImageView %s", galleryImageView.getGalleryObject().getObjectId()),imageLoaderTask);
 		try {
 			imageLoaderTask.get();
 		} catch (InterruptedException e) {
@@ -106,9 +121,8 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 		} catch (ExecutionException e) {
 			fail(e.getMessage());
 		}
-		assertEquals("Current view is not loaded but the imageLoaderTask ist finished", true, currentView.isLoaded());
+		assertEquals(String.format("The GalleryImageView %s is not loaded but the imageLoaderTask ist finished",galleryImageView.getGalleryObject().getObjectId()), true, galleryImageView.isLoaded());
 	}
-
 	private TestWebGallery createTestWebGallery(Resources resources) {
 		TestWebGallery webGallery = new TestWebGallery(resources);
 	
