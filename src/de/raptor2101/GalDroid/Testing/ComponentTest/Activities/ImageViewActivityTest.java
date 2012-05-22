@@ -16,10 +16,17 @@ import de.raptor2101.GalDroid.WebGallery.Interfaces.GalleryObject;
 import de.raptor2101.GalDroid.WebGallery.Tasks.GalleryLoaderTask;
 import de.raptor2101.GalDroid.WebGallery.Tasks.ImageLoaderTask;
 
+import android.app.Instrumentation;
 import android.content.Intent;
 import android.content.res.Resources;
+import android.graphics.PointF;
+import android.os.SystemClock;
 import android.test.ActivityInstrumentationTestCase2;
+import android.test.TouchUtils;
+import android.util.Log;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.WindowManager.LayoutParams;
 import android.widget.Gallery;
 
 public class ImageViewActivityTest extends
@@ -35,7 +42,7 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 	private ImageViewActivity mActivity;
 	private TestWebGallery mWebGallery;
 
-	
+	private Instrumentation mInstrumentation;
 
 	private TestGalleryObject mCurrentGallery;
 	private TestGalleryObject mCurrentVisibleChild;
@@ -47,6 +54,8 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 	@Override
 	protected void setUp() throws Exception {
 		super.setUp();
+		mInstrumentation = getInstrumentation();
+		
 		Resources recources = getInstrumentation().getContext().getResources();
 		mWebGallery = createTestWebGallery(recources);
 		
@@ -78,6 +87,31 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 
 	public void testScrollTrough() {
 		checkStartUp(View.VISIBLE, View.GONE, View.GONE);
+		
+		List<TestGalleryObject> children = mCurrentGallery.getChildren();
+		
+		// fastForward ... to the last image...
+		PointF dragFrom = new PointF(1000, 358);
+		PointF dragTo = new PointF(300, 358);
+		
+		simulateFlingGallery(mGalleryFullscreen, dragFrom, dragTo, 300);
+		try {
+			Thread.sleep(10000);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		checkSelectedView(children.get(1));
+	}
+	
+	private void simulateFlingGallery(Gallery gallery, PointF from, PointF to, int time)  {
+		long startTime = SystemClock.uptimeMillis()-time;
+		MotionEvent startEvent = MotionEvent.obtain(startTime, startTime, MotionEvent.ACTION_DOWN, from.x, from.y, 0);
+		MotionEvent stopEvent = MotionEvent.obtain(startTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, to.x, to.y, 0);
+		float seconds = time/1000f;
+		float velocityX = (to.x-from.x)/seconds;
+		float velocityY= (to.y-from.y)/seconds;
+		gallery.onFling(startEvent, stopEvent, velocityX, velocityY);
 	}
 	
 	private void checkStartUp(int visibilityFullscreenGallery, int visibilityThumbnailGallery, int ImageInformationPanel) {
@@ -91,6 +125,8 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 			
 			try {
 				task.get();
+				// give the UIThread time to handle the Finish event...
+				Thread.sleep(1000);
 			} catch (InterruptedException e) {
 				fail(e.getMessage());
 			} catch (ExecutionException e) {
@@ -112,16 +148,28 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 	}
 	
 	private void checkImageLoaderTask(GalleryImageView galleryImageView) {
-		ImageLoaderTask imageLoaderTask = galleryImageView.getImageLoaderTask();
-		assertNotNull(String.format("There is no imageLoaderTask initialized for the GalleryImageView %s", galleryImageView.getGalleryObject().getObjectId()),imageLoaderTask);
-		try {
-			imageLoaderTask.get();
-		} catch (InterruptedException e) {
-			fail(e.getMessage());
-		} catch (ExecutionException e) {
-			fail(e.getMessage());
+		if (!galleryImageView.isLoaded()) {
+			ImageLoaderTask imageLoaderTask = galleryImageView
+					.getImageLoaderTask();
+			assertNotNull(
+					String.format(
+							"There is no imageLoaderTask initialized for the GalleryImageView %s",
+							galleryImageView.getGalleryObject().getObjectId()),
+					imageLoaderTask);
+			try {
+				imageLoaderTask.get();
+				Thread.sleep(1000);
+			} catch (InterruptedException e) {
+				fail(e.getMessage());
+			} catch (ExecutionException e) {
+				fail(e.getMessage());
+			}
+			assertEquals(
+					String.format(
+							"The GalleryImageView %s is not loaded but the imageLoaderTask ist finished",
+							galleryImageView.getGalleryObject().getObjectId()),
+					true, galleryImageView.isLoaded());
 		}
-		assertEquals(String.format("The GalleryImageView %s is not loaded but the imageLoaderTask ist finished",galleryImageView.getGalleryObject().getObjectId()), true, galleryImageView.isLoaded());
 	}
 	private TestWebGallery createTestWebGallery(Resources resources) {
 		TestWebGallery webGallery = new TestWebGallery(resources);
