@@ -54,6 +54,7 @@ import android.widget.TextView;
 
 public class ImageViewActivityTest extends
 ActivityInstrumentationTestCase2<ImageViewActivity> {
+	private static final String CLASS_TAG = "ImageViewActivityTest";
 	
 	public ImageViewActivityTest() {
 		super("de.raptor2101.GalDroid.Activities.ImageViewActivity",ImageViewActivity.class);
@@ -80,9 +81,7 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 	protected void setUp() throws Exception {
 		Log.d("ImageViewActivityTest", "Setup Called");
 		super.setUp();
-		/*if(mActivity != null) {
-			mActivity.finish();
-		}*/
+		
 		mInstrumentation = getInstrumentation();
 		
 		GalleryCache galleryCache = new GalleryCache(this.getInstrumentation().getTargetContext());
@@ -97,17 +96,6 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 		Resources recources = getInstrumentation().getContext().getResources();
 		mWebGallery = createTestWebGallery(recources);
 		
-		
-		Intent intent = new Intent();
-		intent.putExtra(GalDroidApp.INTENT_EXTRA_DISPLAY_GALLERY,
-				mCurrentGallery);
-		intent.putExtra(GalDroidApp.INTENT_EXTRA_DISPLAY_OBJECT,
-				mCurrentVisibleChild);
-		intent.putExtra(GalDroidApp.INTENT_EXTRA_SHOW_IMAGE_INFO, false);
-		setActivityIntent(intent);
-		
-		
-		
 		GalDroidApp appContext = (GalDroidApp)this.getInstrumentation().getTargetContext().getApplicationContext();
 		appContext.setWebGallery(mWebGallery);
 		galleryCache = appContext.getGalleryCache();
@@ -116,28 +104,38 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 			
 			galleryCache.clearCachedBitmaps();
 		}
+	}
+
+	public void setupActivity(boolean showImageInformation) {
+		Intent intent = new Intent();
+		intent.putExtra(GalDroidApp.INTENT_EXTRA_DISPLAY_GALLERY,
+				mCurrentGallery);
+		intent.putExtra(GalDroidApp.INTENT_EXTRA_DISPLAY_OBJECT,
+				mCurrentVisibleChild);
+		intent.putExtra(GalDroidApp.INTENT_EXTRA_SHOW_IMAGE_INFO, showImageInformation);
+		setActivityIntent(intent);
+		
 		mActivity = getActivity();
 		
 		mGalleryFullscreen = (Gallery) mActivity.findViewById(R.id.singleImageGallery);
     	mGalleryThumbnails = (Gallery) mActivity.findViewById(R.id.thumbnailImageGallery);
     	mImageInformationView = (ImageInformationView) mActivity.findViewById(R.id.viewImageInformations);
-		
-
 	}
-
+	
 	public void testActivityStart() throws Exception {
-		checkStartUp(View.VISIBLE, View.GONE, View.GONE);
-		
+		setupActivity(false);
+		checkStartUp(View.GONE);
 	}
 
-	public void testScrollTrough() throws Exception{
-		checkStartUp(View.VISIBLE, View.GONE, View.GONE);
+	public void testScrollTrough() throws Exception {
+		setupActivity(false);
+		checkStartUp(View.GONE);
 		
 		List<TestGalleryObject> children = mCurrentGallery.getChildren();
 		
 		// fastForward ... to the last image...
 		PointF dragFrom = new PointF(1000, 358);
-		PointF dragTo = new PointF(300, 358);
+		PointF dragTo   = new PointF( 500, 358);
 		
 		for(int pos=1; pos<5; pos++) {
 			int prePos = mGalleryFullscreen.getSelectedItemPosition();
@@ -154,13 +152,85 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 			GalleryImageView imageView = (GalleryImageView) mGalleryFullscreen.getSelectedView();
 			checkSelectedView(children.get(pos));
 			checkImageLoaderTask(imageView);
-			
-			
 		}
 	}
 	
-	public void testActivityStartWithInformations() throws Exception {
-		checkStartUp(View.VISIBLE, View.GONE, View.GONE);
+	public void testScrollTroughWithInformations() throws Exception {
+		List<TestGalleryObject> children = mCurrentGallery.getChildren();
+		TestGalleryObject galleryObject = children.get(0);
+		
+		List<GalleryObjectComment> comments = new ArrayList<GalleryObjectComment>(1);
+		List<String> tags = new ArrayList<String>(2);
+		
+		comments.add(new TestGalleryObjectComment("Some Author", String.format("Comment %d", 0)));
+		
+		tags.add("Some");
+		tags.add(String.format("Comment %d", 0));
+		
+		mWebGallery.setupGetDisplayObjectCommentsCall(galleryObject, comments);
+		mWebGallery.setupGetDisplayObjectTagsCall(galleryObject, tags);
+		
+		setupActivity(true);
+		checkStartUp(View.VISIBLE);
+		
+		ExtractInformationTask task = mImageInformationView.getExtractionInfromationTask();
+		
+		if(task != null) {
+			task.get();
+			Thread.sleep(500);
+		}
+		
+		checkImageInformationIsLoaded(galleryObject);
+		checkTagAreLoaded(tags);
+		checkCommentsAreLoaded(comments);
+		
+		// fastForward ... to the last image...
+		PointF dragFrom = new PointF(1000, 358);
+		PointF dragTo   = new PointF( 500, 358);
+		
+		for(int pos=1; pos<5; pos++) {
+			galleryObject = children.get(pos);
+			Log.d(CLASS_TAG, String.format("Simulating switching to %s",galleryObject));
+			
+			comments.add(new TestGalleryObjectComment("Some Author", String.format("Comment %d", pos)));
+			
+			tags.add("Some");
+			tags.add(String.format("Comment %d", pos));
+			
+			mWebGallery.setupGetDisplayObjectCommentsCall(galleryObject, comments);
+			mWebGallery.setupGetDisplayObjectTagsCall(galleryObject, tags);
+			
+			int prePos = mGalleryFullscreen.getSelectedItemPosition();
+			simulateFlingGallery(mGalleryFullscreen, dragFrom, dragTo, 300);
+			
+			//waiting till the Gallery received the "switch" event
+			long currentTime = System.currentTimeMillis();
+			while(mGalleryFullscreen.getSelectedItemPosition() == prePos) {
+				Thread.sleep(100);
+				long diffTime = System.currentTimeMillis() - currentTime;
+				assertTrue("Switching of an image takes to long", 2000 > diffTime);
+			}
+			
+			GalleryImageView imageView = (GalleryImageView) mGalleryFullscreen.getSelectedView();
+			checkSelectedView(children.get(pos));
+			checkImageLoaderTask(imageView);
+			
+			task = mImageInformationView.getExtractionInfromationTask();
+			
+			if(task != null) {
+				task.get();
+				Thread.sleep(500);
+			}
+			
+			checkImageInformationIsLoaded(galleryObject);
+			checkTagAreLoaded(tags);
+			checkCommentsAreLoaded(comments);
+		}
+	}
+	
+	public void testActivityStartWithOpeningInformations() throws Exception {
+		setupActivity(false);
+		checkStartUp(View.GONE);
 		GalleryImageView imageView = (GalleryImageView) mGalleryFullscreen.getSelectedView();
 		TestGalleryObject galleryObject = (TestGalleryObject) imageView.getGalleryObject();
 		
@@ -196,91 +266,52 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 			Thread.sleep(500);
 		}
 		
+		checkImageInformationIsLoaded(galleryObject);
+		checkTagAreLoaded(tags);
+		checkCommentsAreLoaded(comments);
+	}
+	
+	public void testActivityStartWithInformations() throws Exception {
+		setupActivity(true);
+		checkStartUp(View.VISIBLE);
+		GalleryImageView imageView = (GalleryImageView) mGalleryFullscreen.getSelectedView();
+		TestGalleryObject galleryObject = (TestGalleryObject) imageView.getGalleryObject();
 		
+		List<GalleryObjectComment> comments = new ArrayList<GalleryObjectComment>(5);
+		comments.add(new TestGalleryObjectComment("Some Author","First Comment"));
+		comments.add(new TestGalleryObjectComment("Some other Author","Second Comment"));
+		comments.add(new TestGalleryObjectComment("Some Author","give some more comment"));
+		comments.add(new TestGalleryObjectComment("administraor","shut the fuck up"));
+		comments.add(new TestGalleryObjectComment("Test","Test"));
 		
+		mWebGallery.setupGetDisplayObjectCommentsCall(galleryObject, comments);
 		
+		List<String> tags = new ArrayList<String>(5);
+		tags.add("Some");
+		tags.add("realy");
+		tags.add("incredible");
+		tags.add("genius");
+		tags.add("tags");
+		
+		mWebGallery.setupGetDisplayObjectTagsCall(galleryObject, tags);
+		
+		ExtractInformationTask task = mImageInformationView.getExtractionInfromationTask();
+		
+		if(task != null) {
+			task.get();
+			Thread.sleep(500);
+		}
 		
 		checkImageInformationIsLoaded(galleryObject);
 		checkTagAreLoaded(tags);
 		checkCommentsAreLoaded(comments);
 	}
 	
-	private void checkCommentsAreLoaded(List<GalleryObjectComment> comments) throws Exception {
-		CommentLoaderTask commentLoaderTask = mImageInformationView.getCommentLoaderTask();
-		if(commentLoaderTask != null) {
-			commentLoaderTask.get();
-			Thread.sleep(500);
-		}
-		ViewGroup rootView = (ViewGroup)mImageInformationView.findViewById(R.id.layoutComments);
-		assertEquals("ImageInformation - Commentscount isn't correct.", comments.size(), rootView.getChildCount());
-		DateFormat dateFormat = DateFormat.getDateInstance(DateFormat.MEDIUM,Locale.getDefault());
-		for(int count = 0; count < rootView.getChildCount(); count++) {
-			View commentView = rootView.getChildAt(count);
-			GalleryObjectComment comment = comments.get(count);
-			
-			TextView textAuthor = (TextView) commentView.findViewById(R.id.textCommentAuthor);
-			TextView textDate = (TextView) commentView.findViewById(R.id.textCommentPosted);
-			TextView textMessage = (TextView) commentView.findViewById(R.id.textCommentMessage);
-			
-			assertEquals("ImageInformation - Comment-Author is set wrong", comment.getAuthorName(), textAuthor.getText().toString());
-			assertEquals("ImageInformation - Comment-Date is set wrong", dateFormat.format(comment.getCreateDate()), textDate.getText().toString());
-			assertEquals("ImageInformation - Comment-Message is set wrong", comment.getMessage(), textMessage.getText().toString());
-		}
-	}
-
-	private void checkImageInformationIsLoaded(TestGalleryObject galleryObject) throws Exception {
-		checkEmbededInformationIsLoaded(galleryObject);
-		checkExifInformationIsLoaded();
-	}
 	
-	private void checkTagAreLoaded(List<String> tags) throws Exception {
-		TagLoaderTask tagLoaderTask = mImageInformationView.getTagLoaderTask();
-		if(tagLoaderTask != null) {
-			tagLoaderTask.get();
-			Thread.sleep(500);
-		}
-		
-		StringBuilder stringBuilder = new StringBuilder(tags.size()*10);
-		for(String tag:tags) {
-			stringBuilder.append(String.format("%s, ", tag));
-		}
-		int length = stringBuilder.length() ;
-		if(length > 0) {
-			stringBuilder.delete(stringBuilder.length()-2, stringBuilder.length());
-		}
-		
-		TextView textView = (TextView) mImageInformationView.findViewById(R.id.textTags);
-		assertEquals("ImageInformation - Tags are set wrong", stringBuilder.toString(), textView.getText().toString());
-	}
-
-	private void checkEmbededInformationIsLoaded(TestGalleryObject galleryObject) {
-		TextView textView = (TextView) mImageInformationView.findViewById(R.id.textTitle);
-		assertEquals("ImageInformation - Title is set wrong", galleryObject.getTitle(), textView.getText().toString());
-		
-		textView = (TextView) mImageInformationView.findViewById(R.id.textUploadDate);
-		assertEquals("ImageInformation - UploadDate is set wrong", galleryObject.getDateUploaded().toLocaleString(), textView.getText().toString());
-	}
 	
-	private void checkExifInformationIsLoaded() {
-		TextView textField;
-		textField = (TextView) mImageInformationView.findViewById(R.id.textExifCreateDate);
-		textField = (TextView) mImageInformationView.findViewById(R.id.textExifAperture);
-		textField = (TextView) mImageInformationView.findViewById(R.id.textExifExposure);
-		textField = (TextView) mImageInformationView.findViewById(R.id.textExifFlash);
-		textField = (TextView) mImageInformationView.findViewById(R.id.textExifISO);
-		textField = (TextView) mImageInformationView.findViewById(R.id.textExifModel);
-		textField = (TextView) mImageInformationView.findViewById(R.id.textExifModel);
-		textField = (TextView) mImageInformationView.findViewById(R.id.textExifMake);
-		textField = (TextView) mImageInformationView.findViewById(R.id.textExifFocalLength);
-		textField = (TextView) mImageInformationView.findViewById(R.id.textExifWhiteBalance);
-		textField = (TextView) mImageInformationView.findViewById(R.id.textGeoLat);
-		textField = (TextView) mImageInformationView.findViewById(R.id.textGeoLong);
-		textField = (TextView) mImageInformationView.findViewById(R.id.textGeoHeight);
-	}
-	
-	private void checkStartUp(int visibilityFullscreenGallery, int visibilityThumbnailGallery, int ImageInformationPanel) throws Exception {
-		assertEquals("The FullscreenGallery has wrong Visibility", visibilityFullscreenGallery, mGalleryFullscreen.getVisibility());
-		assertEquals("The ThumbnailGallery has wrong Visibility", visibilityThumbnailGallery, mGalleryThumbnails.getVisibility());
+	private void checkStartUp(int ImageInformationPanel) throws Exception {
+		assertEquals("The FullscreenGallery has wrong Visibility", View.VISIBLE, mGalleryFullscreen.getVisibility());
+		assertEquals("The ThumbnailGallery has wrong Visibility", View.GONE, mGalleryThumbnails.getVisibility());
 		assertEquals("The ImageInformationPanel has wrong Visibility", ImageInformationPanel, mImageInformationView.getVisibility());
 		
 		if( !mActivity.areGalleryObjectsAvailable()) {
@@ -338,7 +369,7 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 							galleryImageView.getGalleryObject().getObjectId()),
 					imageLoaderTask);
 			imageLoaderTask.get();
-			//Thread.sleep(1000);
+			Thread.sleep(1000);
 			assertEquals(
 					String.format(
 							"The GalleryImageView %s is not loaded but the imageLoaderTask ist finished",
@@ -346,6 +377,79 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 					true, galleryImageView.isLoaded());
 		}
 	}
+	private void checkImageInformationIsLoaded(TestGalleryObject galleryObject) throws Exception {
+		checkEmbededInformationIsLoaded(galleryObject);
+		checkExifInformationIsLoaded();
+	}
+
+	private void checkEmbededInformationIsLoaded(TestGalleryObject galleryObject) {
+		TextView textView = (TextView) mImageInformationView.findViewById(R.id.textTitle);
+		assertEquals("ImageInformation - Title is set wrong", galleryObject.getTitle(), textView.getText().toString());
+		
+		textView = (TextView) mImageInformationView.findViewById(R.id.textUploadDate);
+		assertEquals("ImageInformation - UploadDate is set wrong", galleryObject.getDateUploaded().toLocaleString(), textView.getText().toString());
+	}
+
+	private void checkExifInformationIsLoaded() {
+		TextView textField;
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifCreateDate);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifAperture);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifExposure);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifFlash);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifISO);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifModel);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifModel);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifMake);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifFocalLength);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifWhiteBalance);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textGeoLat);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textGeoLong);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textGeoHeight);
+	}
+
+	private void checkCommentsAreLoaded(List<GalleryObjectComment> comments) throws Exception {
+		CommentLoaderTask commentLoaderTask = mImageInformationView.getCommentLoaderTask();
+		if(commentLoaderTask != null) {
+			commentLoaderTask.get();
+			Thread.sleep(500);
+		}
+		ViewGroup rootView = (ViewGroup)mImageInformationView.findViewById(R.id.layoutComments);
+		assertEquals("ImageInformation - Commentscount isn't correct.", comments.size(), rootView.getChildCount());
+		DateFormat dateFormat = DateFormat.getDateInstance(DateFormat.MEDIUM,Locale.getDefault());
+		for(int count = 0; count < rootView.getChildCount(); count++) {
+			View commentView = rootView.getChildAt(count);
+			GalleryObjectComment comment = comments.get(count);
+			
+			TextView textAuthor = (TextView) commentView.findViewById(R.id.textCommentAuthor);
+			TextView textDate = (TextView) commentView.findViewById(R.id.textCommentPosted);
+			TextView textMessage = (TextView) commentView.findViewById(R.id.textCommentMessage);
+			
+			assertEquals("ImageInformation - Comment-Author is set wrong", comment.getAuthorName(), textAuthor.getText().toString());
+			assertEquals("ImageInformation - Comment-Date is set wrong", dateFormat.format(comment.getCreateDate()), textDate.getText().toString());
+			assertEquals("ImageInformation - Comment-Message is set wrong", comment.getMessage(), textMessage.getText().toString());
+		}
+	}
+
+	private void checkTagAreLoaded(List<String> tags) throws Exception {
+		TagLoaderTask tagLoaderTask = mImageInformationView.getTagLoaderTask();
+		if(tagLoaderTask != null) {
+			tagLoaderTask.get();
+			Thread.sleep(500);
+		}
+		
+		StringBuilder stringBuilder = new StringBuilder(tags.size()*10);
+		for(String tag:tags) {
+			stringBuilder.append(String.format("%s, ", tag));
+		}
+		int length = stringBuilder.length() ;
+		if(length > 0) {
+			stringBuilder.delete(stringBuilder.length()-2, stringBuilder.length());
+		}
+		
+		TextView textView = (TextView) mImageInformationView.findViewById(R.id.textTags);
+		assertEquals("ImageInformation - Tags are set wrong", stringBuilder.toString(), textView.getText().toString());
+	}
+
 	private TestWebGallery createTestWebGallery(Resources resources) {
 		TestWebGallery webGallery = new TestWebGallery(resources);
 	
