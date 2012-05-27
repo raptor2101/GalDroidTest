@@ -1,9 +1,11 @@
 package de.raptor2101.GalDroid.Testing.ComponentTest.Activities;
 
 import java.io.File;
+import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutionException;
 
 
@@ -22,8 +24,10 @@ import de.raptor2101.GalDroid.WebGallery.GalleryImageView;
 import de.raptor2101.GalDroid.WebGallery.Interfaces.GalleryDownloadObject;
 import de.raptor2101.GalDroid.WebGallery.Interfaces.GalleryObject;
 import de.raptor2101.GalDroid.WebGallery.Interfaces.GalleryObjectComment;
+import de.raptor2101.GalDroid.WebGallery.Tasks.CommentLoaderTask;
 import de.raptor2101.GalDroid.WebGallery.Tasks.GalleryLoaderTask;
 import de.raptor2101.GalDroid.WebGallery.Tasks.ImageLoaderTask;
+import de.raptor2101.GalDroid.WebGallery.Tasks.TagLoaderTask;
 
 import android.app.ActionBar;
 import android.app.ActionBar.OnMenuVisibilityListener;
@@ -32,6 +36,7 @@ import android.content.Intent;
 import android.content.res.Resources;
 import android.graphics.PointF;
 import android.graphics.drawable.Drawable;
+import android.media.ExifInterface;
 import android.os.SystemClock;
 import android.test.ActivityInstrumentationTestCase2;
 import android.test.TouchUtils;
@@ -40,6 +45,7 @@ import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.SubMenu;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ContextMenu.ContextMenuInfo;
 import android.view.MenuItem.OnMenuItemClickListener;
 import android.view.WindowManager.LayoutParams;
@@ -187,22 +193,91 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 		
 		if(task != null) {
 			task.get();
+			Thread.sleep(500);
 		}
 		
-		checkImageInformationIsLoaded(galleryObject);
 		
+		
+		
+		
+		checkImageInformationIsLoaded(galleryObject);
+		checkTagAreLoaded(tags);
+		checkCommentsAreLoaded(comments);
 	}
-	private void checkImageInformationIsLoaded(TestGalleryObject galleryObject) {
+	
+	private void checkCommentsAreLoaded(List<GalleryObjectComment> comments) throws Exception {
+		CommentLoaderTask commentLoaderTask = mImageInformationView.getCommentLoaderTask();
+		if(commentLoaderTask != null) {
+			commentLoaderTask.get();
+			Thread.sleep(500);
+		}
+		ViewGroup rootView = (ViewGroup)mImageInformationView.findViewById(R.id.layoutComments);
+		assertEquals("ImageInformation - Commentscount isn't correct.", comments.size(), rootView.getChildCount());
+		DateFormat dateFormat = DateFormat.getDateInstance(DateFormat.MEDIUM,Locale.getDefault());
+		for(int count = 0; count < rootView.getChildCount(); count++) {
+			View commentView = rootView.getChildAt(count);
+			GalleryObjectComment comment = comments.get(count);
+			
+			TextView textAuthor = (TextView) commentView.findViewById(R.id.textCommentAuthor);
+			TextView textDate = (TextView) commentView.findViewById(R.id.textCommentPosted);
+			TextView textMessage = (TextView) commentView.findViewById(R.id.textCommentMessage);
+			
+			assertEquals("ImageInformation - Comment-Author is set wrong", comment.getAuthorName(), textAuthor.getText().toString());
+			assertEquals("ImageInformation - Comment-Date is set wrong", dateFormat.format(comment.getCreateDate()), textDate.getText().toString());
+			assertEquals("ImageInformation - Comment-Message is set wrong", comment.getMessage(), textMessage.getText().toString());
+		}
+	}
+
+	private void checkImageInformationIsLoaded(TestGalleryObject galleryObject) throws Exception {
+		checkEmbededInformationIsLoaded(galleryObject);
+		checkExifInformationIsLoaded();
+	}
+	
+	private void checkTagAreLoaded(List<String> tags) throws Exception {
+		TagLoaderTask tagLoaderTask = mImageInformationView.getTagLoaderTask();
+		if(tagLoaderTask != null) {
+			tagLoaderTask.get();
+			Thread.sleep(500);
+		}
+		
+		StringBuilder stringBuilder = new StringBuilder(tags.size()*10);
+		for(String tag:tags) {
+			stringBuilder.append(String.format("%s, ", tag));
+		}
+		int length = stringBuilder.length() ;
+		if(length > 0) {
+			stringBuilder.delete(stringBuilder.length()-2, stringBuilder.length());
+		}
+		
+		TextView textView = (TextView) mImageInformationView.findViewById(R.id.textTags);
+		assertEquals("ImageInformation - Tags are set wrong", stringBuilder.toString(), textView.getText().toString());
+	}
+
+	private void checkEmbededInformationIsLoaded(TestGalleryObject galleryObject) {
 		TextView textView = (TextView) mImageInformationView.findViewById(R.id.textTitle);
 		assertEquals("ImageInformation - Title is set wrong", galleryObject.getTitle(), textView.getText().toString());
 		
 		textView = (TextView) mImageInformationView.findViewById(R.id.textUploadDate);
 		assertEquals("ImageInformation - UploadDate is set wrong", galleryObject.getDateUploaded().toLocaleString(), textView.getText().toString());
-		
 	}
-	private void checkEmbededInformationIsLoaded(TestGalleryObject galleryObject) {
-		
+	
+	private void checkExifInformationIsLoaded() {
+		TextView textField;
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifCreateDate);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifAperture);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifExposure);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifFlash);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifISO);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifModel);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifModel);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifMake);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifFocalLength);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textExifWhiteBalance);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textGeoLat);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textGeoLong);
+		textField = (TextView) mImageInformationView.findViewById(R.id.textGeoHeight);
 	}
+	
 	private void checkStartUp(int visibilityFullscreenGallery, int visibilityThumbnailGallery, int ImageInformationPanel) throws Exception {
 		assertEquals("The FullscreenGallery has wrong Visibility", visibilityFullscreenGallery, mGalleryFullscreen.getVisibility());
 		assertEquals("The ThumbnailGallery has wrong Visibility", visibilityThumbnailGallery, mGalleryThumbnails.getVisibility());
