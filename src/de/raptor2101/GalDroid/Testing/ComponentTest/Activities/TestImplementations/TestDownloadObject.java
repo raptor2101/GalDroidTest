@@ -53,6 +53,11 @@ public class TestDownloadObject implements GalleryDownloadObject {
 		return String.format("%s-%s", mObjectId, mRequestedSize);
 	}
 	
+	@Override
+	public String toString() {
+		return String.format("%s-%s", mObjectId, mRequestedSize);
+	}
+	
 	public int getResourceId() {
 		return mImageRecourceID;
 	}
