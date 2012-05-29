@@ -116,10 +116,13 @@ public class TestWebGallery implements WebGallery {
 		expectedGetDisplayObjectTagsCalls.put(galleryObject, returnValue);
 	}
 	
+	private Map<GalleryObject, Semaphore> mMapBlockedGetDisplayObjectTags = new HashMap<GalleryObject, Semaphore>(10); 
+	
 	@Override
 	public List<String> getDisplayObjectTags(GalleryObject galleryObject,
 			GalleryProgressListener progressListener) throws IOException {
 		if(expectedGetDisplayObjectTagsCalls.containsKey(galleryObject)) {
+			AquireWaitHandle(galleryObject, mMapBlockedGetDisplayObjectComments);
 			return expectedGetDisplayObjectTagsCalls.get(galleryObject);
 		} else {
 			Assert.fail(String.format("No setup for %s - getDisplayObjectTags-Call", galleryObject));
@@ -127,6 +130,12 @@ public class TestWebGallery implements WebGallery {
 		}
 		
 	}
+	
+	public void releaseGetGetDisplayObjectTags(GalleryObject galleryObject) {
+		ReleaseWaitHandle(galleryObject, mMapBlockedGetDisplayObjectComments);
+	}
+
+	
 
 	private Map<GalleryObject,List<GalleryObjectComment>> expectedGetDisplayObjectCommentsCalls = new HashMap<GalleryObject,List<GalleryObjectComment>>(10);
 	
@@ -134,12 +143,16 @@ public class TestWebGallery implements WebGallery {
 		expectedGetDisplayObjectCommentsCalls.put(galleryObject, returnValue);
 	}
 	
+	private Map<GalleryObject, Semaphore> mMapBlockedGetDisplayObjectComments = new HashMap<GalleryObject, Semaphore>(10); 
+	
 	@Override
 	public List<GalleryObjectComment> getDisplayObjectComments(
 			GalleryObject galleryObject,
 			GalleryProgressListener progressListener) throws IOException,
 			ClientProtocolException, JSONException {
 		if(expectedGetDisplayObjectCommentsCalls.containsKey(galleryObject)) {
+			AquireWaitHandle(galleryObject, mMapBlockedGetDisplayObjectComments);
+			
 			return expectedGetDisplayObjectCommentsCalls.get(galleryObject);
 		} else {
 			Assert.fail(String.format("No setup for %s - getDisplayObjectComments-Call", galleryObject));
@@ -147,6 +160,10 @@ public class TestWebGallery implements WebGallery {
 		}
 	}
 
+	public void releaseGetDisplayObjectComments(GalleryObject galleryObject) {
+		ReleaseWaitHandle(galleryObject, mMapBlockedGetDisplayObjectComments);
+	}
+	
 	@Override
 	public void setPreferedDimensions(int height, int width) {
 		// TODO currently not tracked for testing
@@ -276,5 +293,51 @@ public class TestWebGallery implements WebGallery {
 	
 	public void deactivateDownloadWaitHandle() {
 		mDownloadWaitHandle = false;
+	}
+
+	private void AquireWaitHandle(GalleryObject galleryObject, Map<GalleryObject, Semaphore> mapHandles) {
+		if(mDownloadWaitHandle) {
+			Semaphore semaphore;
+			synchronized (mapHandles) {
+				if (mapHandles
+						.containsKey(galleryObject)) {
+					Log.d(CLASS_TAG, String.format(
+							"Aquire existing semaphore for %s",
+							galleryObject));
+					semaphore = mapHandles.get(galleryObject);
+				} else {
+					Log.d(CLASS_TAG,
+							String.format(
+									"Creating and aquire existing semaphore for %s",
+									galleryObject));
+					semaphore = new Semaphore(0);
+					mapHandles.put(galleryObject, semaphore);
+				}	
+			}
+			try {
+				semaphore.acquire();
+			} catch (InterruptedException e) {
+				Assert.fail(e.getMessage());
+			}
+		}
+	}
+
+	private void ReleaseWaitHandle(GalleryObject galleryObject, Map<GalleryObject, Semaphore> mapHandles) {
+		Semaphore semaphore;
+		synchronized (mapHandles) {
+			if (mapHandles.containsKey(galleryObject)) {
+				Log.d(CLASS_TAG, String.format(
+						"Release existing semaphore for %s", galleryObject));
+				semaphore = mapHandles.get(galleryObject);
+	
+			} else {
+				Log.d(CLASS_TAG, String.format(
+						"Creating and release existing semaphore for %s",
+						galleryObject));
+				semaphore = new Semaphore(0);
+				mapHandles.put(galleryObject, semaphore);
+			}
+		}
+		semaphore.release();
 	}
 }
