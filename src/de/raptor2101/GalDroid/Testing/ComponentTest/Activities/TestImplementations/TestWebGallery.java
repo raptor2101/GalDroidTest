@@ -4,18 +4,14 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.Buffer;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Dictionary;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
 
 import junit.framework.Assert;
-import junit.framework.Test;
 
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
@@ -24,7 +20,7 @@ import org.json.JSONException;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.Drawable;
+import android.util.Log;
 
 import de.raptor2101.GalDroid.WebGallery.GalleryStream;
 import de.raptor2101.GalDroid.WebGallery.Interfaces.GalleryDownloadObject;
@@ -34,12 +30,15 @@ import de.raptor2101.GalDroid.WebGallery.Interfaces.GalleryProgressListener;
 import de.raptor2101.GalDroid.WebGallery.Interfaces.WebGallery;
 
 public class TestWebGallery implements WebGallery {
+	private static final String CLASS_TAG = "TestWebGallery";
 	private List<TestGalleryObject> mTestGalleryObject;
 	private List<TestDownloadObject> mRequestedObjects;
 
 	private final Resources mResources;
-
+	private boolean mDownloadWaitHandle;
+	
 	public TestWebGallery(Resources resources) {
+		mDownloadWaitHandle = false;
 		mResources = resources;
 		mRequestedObjects = new ArrayList<TestDownloadObject>(0);
 	}
@@ -160,6 +159,8 @@ public class TestWebGallery implements WebGallery {
 		return null;
 	}
 
+	private Map<TestDownloadObject, Semaphore> mMapBlockedGetFileStream = new HashMap<TestDownloadObject, Semaphore>(10); 
+	
 	@Override
 	public GalleryStream getFileStream(GalleryDownloadObject downloadObject)
 			throws IOException, ClientProtocolException {
@@ -171,6 +172,33 @@ public class TestWebGallery implements WebGallery {
 			synchronized (mRequestedObjects) {
 				mRequestedObjects.add(testDownloadObject);
 			}
+			
+			if(mDownloadWaitHandle) {
+				Semaphore semaphore;
+				synchronized (mMapBlockedGetFileStream) {
+					if (mMapBlockedGetFileStream
+							.containsKey(testDownloadObject)) {
+						Log.d(CLASS_TAG, String.format(
+								"Aquire existing semaphore for %s",
+								testDownloadObject));
+						semaphore = mMapBlockedGetFileStream
+								.get(testDownloadObject);
+					} else {
+						Log.d(CLASS_TAG,
+								String.format(
+										"Creating and aquire existing semaphore for %s",
+										testDownloadObject));
+						semaphore = new Semaphore(0);
+						mMapBlockedGetFileStream.put((TestDownloadObject) downloadObject, semaphore);
+					}	
+				}
+				try {
+					semaphore.acquire();
+				} catch (InterruptedException e) {
+					Assert.fail(e.getMessage());
+				}
+			}
+			
 			BitmapDrawable drawable = (BitmapDrawable) mResources
 					.getDrawable(testDownloadObject.getResourceId());
 			Bitmap bitmap = (Bitmap) ((BitmapDrawable) drawable).getBitmap();
@@ -185,7 +213,25 @@ public class TestWebGallery implements WebGallery {
 		}
 
 	}
+	
+	public void releaseGetFileStream(TestDownloadObject downloadObject) {
+		Semaphore semaphore;
+		synchronized (mMapBlockedGetFileStream) {
+			if (mMapBlockedGetFileStream.containsKey(downloadObject)) {
+				Log.d(CLASS_TAG, String.format(
+						"Release existing semaphore for %s", downloadObject));
+				semaphore = mMapBlockedGetFileStream.get(downloadObject);
 
+			} else {
+				Log.d(CLASS_TAG, String.format(
+						"Creating and release existing semaphore for %s",
+						downloadObject));
+				semaphore = new Semaphore(0);
+				mMapBlockedGetFileStream.put(downloadObject, semaphore);
+			}
+		}
+		semaphore.release();
+	}
 	@Override
 	public void setSecurityToken(String token) {
 		Assert.fail("Call not implemented TestMethod");
@@ -218,5 +264,17 @@ public class TestWebGallery implements WebGallery {
 		synchronized (mRequestedObjects) {
 			return Collections.unmodifiableList(mRequestedObjects);
 		}
+	}
+
+	public boolean isDownloadWaitHandleActive(){
+		return mDownloadWaitHandle;
+	}
+	
+	public void activateDownloadWaitHandle() {
+		mDownloadWaitHandle = true;
+	}
+	
+	public void deactivateDownloadWaitHandle() {
+		mDownloadWaitHandle = false;
 	}
 }
