@@ -122,7 +122,7 @@ public class TestWebGallery implements WebGallery {
 	public List<String> getDisplayObjectTags(GalleryObject galleryObject,
 			GalleryProgressListener progressListener) throws IOException {
 		if(expectedGetDisplayObjectTagsCalls.containsKey(galleryObject)) {
-			AquireWaitHandle(galleryObject, mMapBlockedGetDisplayObjectComments);
+			AquireWaitHandle("getDisplayObjectTags", galleryObject, mMapBlockedGetDisplayObjectTags);
 			return expectedGetDisplayObjectTagsCalls.get(galleryObject);
 		} else {
 			Assert.fail(String.format("No setup for %s - getDisplayObjectTags-Call", galleryObject));
@@ -132,7 +132,7 @@ public class TestWebGallery implements WebGallery {
 	}
 	
 	public void releaseGetGetDisplayObjectTags(GalleryObject galleryObject) {
-		ReleaseWaitHandle(galleryObject, mMapBlockedGetDisplayObjectComments);
+		ReleaseWaitHandle("getDisplayObjectTags", galleryObject, mMapBlockedGetDisplayObjectTags);
 	}
 
 	
@@ -151,7 +151,7 @@ public class TestWebGallery implements WebGallery {
 			GalleryProgressListener progressListener) throws IOException,
 			ClientProtocolException, JSONException {
 		if(expectedGetDisplayObjectCommentsCalls.containsKey(galleryObject)) {
-			AquireWaitHandle(galleryObject, mMapBlockedGetDisplayObjectComments);
+			AquireWaitHandle("getDisplayObjectComments", galleryObject, mMapBlockedGetDisplayObjectComments);
 			
 			return expectedGetDisplayObjectCommentsCalls.get(galleryObject);
 		} else {
@@ -161,7 +161,7 @@ public class TestWebGallery implements WebGallery {
 	}
 
 	public void releaseGetDisplayObjectComments(GalleryObject galleryObject) {
-		ReleaseWaitHandle(galleryObject, mMapBlockedGetDisplayObjectComments);
+		ReleaseWaitHandle("getDisplayObjectComments", galleryObject, mMapBlockedGetDisplayObjectComments);
 	}
 	
 	@Override
@@ -196,14 +196,14 @@ public class TestWebGallery implements WebGallery {
 					if (mMapBlockedGetFileStream
 							.containsKey(testDownloadObject)) {
 						Log.d(CLASS_TAG, String.format(
-								"Aquire existing semaphore for %s",
+								"getFileStream - Aquire existing semaphore for %s",
 								testDownloadObject));
 						semaphore = mMapBlockedGetFileStream
 								.get(testDownloadObject);
 					} else {
 						Log.d(CLASS_TAG,
 								String.format(
-										"Creating and aquire existing semaphore for %s",
+										"getFileStream - Creating and aquire existing semaphore for %s",
 										testDownloadObject));
 						semaphore = new Semaphore(0);
 						mMapBlockedGetFileStream.put((TestDownloadObject) downloadObject, semaphore);
@@ -214,6 +214,10 @@ public class TestWebGallery implements WebGallery {
 				} catch (InterruptedException e) {
 					Assert.fail(e.getMessage());
 				}
+				
+				Log.d(CLASS_TAG,
+						String.format(
+								"getFileStream - semaphore released for %s", testDownloadObject));
 			}
 			
 			BitmapDrawable drawable = (BitmapDrawable) mResources
@@ -236,12 +240,12 @@ public class TestWebGallery implements WebGallery {
 		synchronized (mMapBlockedGetFileStream) {
 			if (mMapBlockedGetFileStream.containsKey(downloadObject)) {
 				Log.d(CLASS_TAG, String.format(
-						"Release existing semaphore for %s", downloadObject));
+						"getFileStream - Release existing semaphore for %s", downloadObject));
 				semaphore = mMapBlockedGetFileStream.get(downloadObject);
 
 			} else {
 				Log.d(CLASS_TAG, String.format(
-						"Creating and release existing semaphore for %s",
+						"getFileStream - Creating and release existing semaphore for %s",
 						downloadObject));
 				semaphore = new Semaphore(0);
 				mMapBlockedGetFileStream.put(downloadObject, semaphore);
@@ -295,21 +299,21 @@ public class TestWebGallery implements WebGallery {
 		mDownloadWaitHandle = false;
 	}
 
-	private void AquireWaitHandle(GalleryObject galleryObject, Map<GalleryObject, Semaphore> mapHandles) {
+	private void AquireWaitHandle(String source, GalleryObject galleryObject, Map<GalleryObject, Semaphore> mapHandles) {
 		if(mDownloadWaitHandle) {
 			Semaphore semaphore;
 			synchronized (mapHandles) {
 				if (mapHandles
 						.containsKey(galleryObject)) {
 					Log.d(CLASS_TAG, String.format(
-							"Aquire existing semaphore for %s",
-							galleryObject));
+							"%s - Aquire existing semaphore for %s",
+							source, galleryObject));
 					semaphore = mapHandles.get(galleryObject);
 				} else {
 					Log.d(CLASS_TAG,
 							String.format(
-									"Creating and aquire existing semaphore for %s",
-									galleryObject));
+									"%s - Creating and aquire existing semaphore for %s",
+									source, galleryObject));
 					semaphore = new Semaphore(0);
 					mapHandles.put(galleryObject, semaphore);
 				}	
@@ -319,21 +323,25 @@ public class TestWebGallery implements WebGallery {
 			} catch (InterruptedException e) {
 				Assert.fail(e.getMessage());
 			}
+			Log.d(CLASS_TAG,
+					String.format(
+							"%s - semaphore released for %s",
+							source, galleryObject));
 		}
 	}
 
-	private void ReleaseWaitHandle(GalleryObject galleryObject, Map<GalleryObject, Semaphore> mapHandles) {
+	private void ReleaseWaitHandle(String source, GalleryObject galleryObject, Map<GalleryObject, Semaphore> mapHandles) {
 		Semaphore semaphore;
 		synchronized (mapHandles) {
 			if (mapHandles.containsKey(galleryObject)) {
 				Log.d(CLASS_TAG, String.format(
-						"Release existing semaphore for %s", galleryObject));
+						"%s - Release existing semaphore for %s", source,  galleryObject));
 				semaphore = mapHandles.get(galleryObject);
 	
 			} else {
 				Log.d(CLASS_TAG, String.format(
-						"Creating and release existing semaphore for %s",
-						galleryObject));
+						"%s - Creating and release existing semaphore for %s",
+						source, galleryObject));
 				semaphore = new Semaphore(0);
 				mapHandles.put(galleryObject, semaphore);
 			}

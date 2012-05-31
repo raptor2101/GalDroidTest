@@ -6,7 +6,10 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.Random;
 import java.util.concurrent.ExecutionException;
+
+import junit.framework.Assert;
 
 
 import de.raptor2101.GalDroid.R;
@@ -37,6 +40,7 @@ import android.content.res.Resources;
 import android.graphics.PointF;
 import android.graphics.drawable.Drawable;
 import android.media.ExifInterface;
+import android.os.AsyncTask;
 import android.os.SystemClock;
 import android.test.ActivityInstrumentationTestCase2;
 import android.test.TouchUtils;
@@ -54,6 +58,7 @@ import android.widget.TextView;
 
 public class ImageViewActivityTest extends
 ActivityInstrumentationTestCase2<ImageViewActivity> {
+	private static final int MAX_REACTION_TIME = 10000;
 	private static final String CLASS_TAG = "ImageViewActivityTest";
 	
 	public ImageViewActivityTest() {
@@ -71,10 +76,12 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 	private TestGalleryObject mCurrentGallery;
 	private TestGalleryObject mCurrentVisibleChild;
 	
-	private ImageInformationView	mImageInformationView;
+	private ImageInformationView mImageInformationView;
 	
 	private Gallery mGalleryFullscreen;
 	private Gallery mGalleryThumbnails;
+	
+	private ImageLoaderTask mImageLoaderTask;
 	
 
 	@Override
@@ -93,20 +100,26 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 			}
 		}
 		
-		Resources recources = getInstrumentation().getContext().getResources();
+		Resources recources = mInstrumentation.getContext().getResources();
 		mWebGallery = createTestWebGallery(recources);
 		
-		GalDroidApp appContext = (GalDroidApp)this.getInstrumentation().getTargetContext().getApplicationContext();
+		GalDroidApp appContext = (GalDroidApp)mInstrumentation.getTargetContext().getApplicationContext();
 		appContext.setWebGallery(mWebGallery);
 		galleryCache = appContext.getGalleryCache();
 		
 		if (galleryCache != null) {
-			
 			galleryCache.clearCachedBitmaps();
 		}
 	}
 
+	@Override
+	protected void tearDown() throws Exception {
+		mActivity = null;
+		super.tearDown();
+	}
+	
 	public void setupActivity(boolean showImageInformation) {
+		Log.d(CLASS_TAG, "Create Intent");
 		Intent intent = new Intent();
 		intent.putExtra(GalDroidApp.INTENT_EXTRA_DISPLAY_GALLERY,
 				mCurrentGallery);
@@ -115,10 +128,16 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 		intent.putExtra(GalDroidApp.INTENT_EXTRA_SHOW_IMAGE_INFO, showImageInformation);
 		setActivityIntent(intent);
 		
+		Log.d(CLASS_TAG, "getActivity");
 		mActivity = getActivity();
 		
+		Log.d(CLASS_TAG, "extract Controls");
 		mGalleryFullscreen = (Gallery) mActivity.findViewById(R.id.singleImageGallery);
     	mGalleryThumbnails = (Gallery) mActivity.findViewById(R.id.thumbnailImageGallery);
+    	
+    	GalleryImageAdapter adapter = (GalleryImageAdapter) mGalleryFullscreen.getAdapter();
+    	mImageLoaderTask = adapter.getImageLoaderTask();
+    	
     	mImageInformationView = (ImageInformationView) mActivity.findViewById(R.id.viewImageInformations);
 	}
 	
@@ -146,7 +165,10 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 			while(mGalleryFullscreen.getSelectedItemPosition() == prePos) {
 				Thread.sleep(100);
 				long diffTime = System.currentTimeMillis() - currentTime;
-				assertTrue("Switching of an image takes to long", 2000 > diffTime);
+				if(diffTime%1000<100){
+					simulateFlingGallery(mGalleryFullscreen, dragFrom, dragTo, 300);
+				}
+				assertTrue("Switching of an image takes to long", MAX_REACTION_TIME > diffTime);
 			}
 			
 			GalleryImageView imageView = (GalleryImageView) mGalleryFullscreen.getSelectedView();
@@ -173,16 +195,7 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 		setupActivity(true);
 		checkStartUp(View.VISIBLE);
 		
-		ExtractInformationTask task = mImageInformationView.getExtractionInfromationTask();
-		
-		if(task != null) {
-			task.get();
-			Thread.sleep(500);
-		}
-		
-		checkImageInformationIsLoaded(galleryObject);
-		checkTagAreLoaded(tags);
-		checkCommentsAreLoaded(comments);
+		checkImageInformationIsLoadedCorrectly(galleryObject, comments, tags);
 		
 		// fastForward ... to the last image...
 		PointF dragFrom = new PointF(1000, 358);
@@ -208,26 +221,252 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 			while(mGalleryFullscreen.getSelectedItemPosition() == prePos) {
 				Thread.sleep(100);
 				long diffTime = System.currentTimeMillis() - currentTime;
-				assertTrue("Switching of an image takes to long", 2000 > diffTime);
+				assertTrue("Switching of an image takes to long", MAX_REACTION_TIME > diffTime);
 			}
 			
 			GalleryImageView imageView = (GalleryImageView) mGalleryFullscreen.getSelectedView();
 			checkSelectedView(children.get(pos));
 			checkImageLoaderTask(imageView);
 			
-			task = mImageInformationView.getExtractionInfromationTask();
-			
-			if(task != null) {
-				task.get();
-				Thread.sleep(500);
-			}
-			
-			checkImageInformationIsLoaded(galleryObject);
-			checkTagAreLoaded(tags);
-			checkCommentsAreLoaded(comments);
+			checkImageInformationIsLoadedCorrectly(galleryObject, comments, tags);
 		}
 	}
 	
+	public void testScrollTroughWithInformationsAndDeferedLoading() throws Exception {
+		Log.d(CLASS_TAG, "Prepare TestEnvironment");
+		List<TestGalleryObject> children = mCurrentGallery.getChildren();
+		TestGalleryObject galleryObject = children.get(0);
+		
+		List<GalleryObjectComment> comments = new ArrayList<GalleryObjectComment>(1);
+		List<String> tags = new ArrayList<String>(2);
+		
+		comments.add(new TestGalleryObjectComment("Some Author", String.format("Comment %d", 0)));
+		
+		tags.add("Some");
+		tags.add(String.format("Comment %d", 0));
+		
+		Log.d(CLASS_TAG, "activate DownloadWait Handle");
+		mWebGallery.activateDownloadWaitHandle();
+		
+		Log.d(CLASS_TAG, "Setup GalleryCalls");
+		mWebGallery.setupGetDisplayObjectCommentsCall(galleryObject, comments);
+		mWebGallery.setupGetDisplayObjectTagsCall(galleryObject, tags);
+		
+		Log.d(CLASS_TAG, "start Activity");
+		setupActivity(true);
+		
+		Log.d(CLASS_TAG, "initial Check");
+		// Begin Check Startup
+		assertEquals("The FullscreenGallery has wrong Visibility", View.VISIBLE, mGalleryFullscreen.getVisibility());
+		assertEquals("The ThumbnailGallery has wrong Visibility", View.GONE, mGalleryThumbnails.getVisibility());
+		assertEquals("The ImageInformationPanel has wrong Visibility", View.VISIBLE, mImageInformationView.getVisibility());
+		
+		Log.d(CLASS_TAG, "areGalleryObjectsAvailable");
+		
+		if( !mActivity.areGalleryObjectsAvailable()) {
+			Log.d(CLASS_TAG, "Checking LoaderTask");
+			GalleryLoaderTask loaderTask = mActivity.getDownloadTask();
+			assertNotNull("No DownloadTask created although no gallery object could be loaded from the cache",loaderTask);
+			
+			loaderTask.get();
+		}
+		
+		
+		
+		// Whait till the adapter gets loaded
+		GalleryImageAdapter adapter = (GalleryImageAdapter) mGalleryFullscreen.getAdapter();
+		
+		long currentTime = System.currentTimeMillis();
+		Log.d(CLASS_TAG, "wait till adapter is loaded");
+		while(!adapter.isLoaded()) {
+			Thread.sleep(100);
+			long diffTime = System.currentTimeMillis() - currentTime;
+			Log.d("ImageViewActivityTest",String.format("Test %d", diffTime));
+			assertTrue("Loading of the GalleryImageAdapter takes to long", 10000 > diffTime);
+		}
+		
+		Thread.sleep(1000);
+		
+		GalleryImageView selectedView = checkSelectedView(mCurrentVisibleChild);
+		
+		checkImageInformationIsntLoadedBeforImage();
+		
+		checkImageLoaderTask(selectedView);
+		checkPreLoading(selectedView,2);
+		// End Check Startup
+		
+		
+		checkImageInformationIsLoadedCorrectly(galleryObject, comments, tags);
+		
+		// fastForward ... to the last image...
+		PointF dragFrom = new PointF(1000, 358);
+		PointF dragTo   = new PointF( 500, 358);
+		
+		for(int pos=1; pos<5; pos++) {
+			galleryObject = children.get(pos);
+			Log.d(CLASS_TAG, String.format("Simulating switching to %s",galleryObject));
+			
+			comments.add(new TestGalleryObjectComment("Some Author", String.format("Comment %d", pos)));
+			
+			tags.add("Some");
+			tags.add(String.format("Comment %d", pos));
+			
+			mWebGallery.setupGetDisplayObjectCommentsCall(galleryObject, comments);
+			mWebGallery.setupGetDisplayObjectTagsCall(galleryObject, tags);
+			
+			int prePos = mGalleryFullscreen.getSelectedItemPosition();
+			simulateFlingGallery(mGalleryFullscreen, dragFrom, dragTo, 300);
+			
+			//waiting till the Gallery received the "switch" event
+			currentTime = System.currentTimeMillis();
+			while(mGalleryFullscreen.getSelectedItemPosition() == prePos) {
+				Thread.sleep(100);
+				long diffTime = System.currentTimeMillis() - currentTime;
+				assertTrue("Switching of an image takes to long", MAX_REACTION_TIME > diffTime);
+			}
+			
+			GalleryImageView imageView = (GalleryImageView) mGalleryFullscreen.getSelectedView();
+			checkSelectedView(children.get(pos));
+			checkImageInformationIsntLoadedBeforImage();
+			checkImageLoaderTask(imageView);
+			
+			checkImageInformationIsLoadedCorrectly(galleryObject, comments, tags);
+		}
+	}
+	
+	public void testScrollTroughWithInformationsAndAbortions() throws Exception {
+		Log.d(CLASS_TAG, "Prepare TestEnvironment");
+		List<TestGalleryObject> children = mCurrentGallery.getChildren();
+		TestGalleryObject galleryObject = children.get(0);
+		
+		List<GalleryObjectComment> comments = new ArrayList<GalleryObjectComment>(1);
+		List<String> tags = new ArrayList<String>(2);
+		
+		comments.add(new TestGalleryObjectComment("Some Author", String.format("Comment %d", 0)));
+		
+		tags.add("Some");
+		tags.add(String.format("Comment %d", 0));
+		
+		Log.d(CLASS_TAG, "activate DownloadWait Handle");
+		mWebGallery.activateDownloadWaitHandle();
+		
+		Log.d(CLASS_TAG, "Setup GalleryCalls");
+		mWebGallery.setupGetDisplayObjectCommentsCall(galleryObject, comments);
+		mWebGallery.setupGetDisplayObjectTagsCall(galleryObject, tags);
+		
+		Log.d(CLASS_TAG, "start Activity");
+		setupActivity(true);
+		
+		Log.d(CLASS_TAG, "initial Check");
+		// Begin Check Startup
+		assertEquals("The FullscreenGallery has wrong Visibility", View.VISIBLE, mGalleryFullscreen.getVisibility());
+		assertEquals("The ThumbnailGallery has wrong Visibility", View.GONE, mGalleryThumbnails.getVisibility());
+		assertEquals("The ImageInformationPanel has wrong Visibility", View.VISIBLE, mImageInformationView.getVisibility());
+		
+		Log.d(CLASS_TAG, "areGalleryObjectsAvailable");
+		
+		if( !mActivity.areGalleryObjectsAvailable()) {
+			Log.d(CLASS_TAG, "Checking LoaderTask");
+			GalleryLoaderTask loaderTask = mActivity.getDownloadTask();
+			assertNotNull("No DownloadTask created although no gallery object could be loaded from the cache",loaderTask);
+			
+			loaderTask.get();
+		}
+		
+		
+		
+		// Whait till the adapter gets loaded
+		GalleryImageAdapter adapter = (GalleryImageAdapter) mGalleryFullscreen.getAdapter();
+		
+		long currentTime = System.currentTimeMillis();
+		Log.d(CLASS_TAG, "wait till adapter is loaded");
+		while(!adapter.isLoaded()) {
+			Thread.sleep(100);
+			long diffTime = System.currentTimeMillis() - currentTime;
+			Log.d("ImageViewActivityTest",String.format("Test %d", diffTime));
+			assertTrue("Loading of the GalleryImageAdapter takes to long", 10000 > diffTime);
+		}
+		
+		Thread.sleep(1000);
+		
+		GalleryImageView selectedView = checkSelectedView(mCurrentVisibleChild);
+		
+		checkImageInformationIsntLoadedBeforImage();
+		
+		checkImageLoaderTask(selectedView);
+		checkPreLoading(selectedView,2);
+		// End Check Startup
+		
+		
+		checkImageInformationIsLoadedCorrectly(galleryObject, comments, tags);
+		
+		// fastForward ... to the last image...
+		PointF dragFrom = new PointF(1000, 358);
+		PointF dragTo   = new PointF( 500, 358);
+		
+		List<ImageLoaderTask> storedTask = new ArrayList<ImageLoaderTask>(10);
+		
+		for(int pos=1; pos<30; pos++) {
+			galleryObject = children.get(pos);
+			Log.d(CLASS_TAG, String.format("Simulating switching to %s",galleryObject));
+			
+			if(pos%5 == 0) {
+				comments.add(new TestGalleryObjectComment("Some Author", String.format("Comment %d", pos)));
+			
+				tags.add("Some");
+				tags.add(String.format("Comment %d", pos));
+				
+				mWebGallery.setupGetDisplayObjectCommentsCall(galleryObject, comments);
+				mWebGallery.setupGetDisplayObjectTagsCall(galleryObject, tags);
+			}
+			
+			int prePos = mGalleryFullscreen.getSelectedItemPosition();
+			simulateFlingGallery(mGalleryFullscreen, dragFrom, dragTo, 300);
+			
+			//waiting till the Gallery received the "switch" event
+			currentTime = System.currentTimeMillis();
+			while(mGalleryFullscreen.getSelectedItemPosition() == prePos) {
+				Log.d(CLASS_TAG, String.format("%d - %d",mGalleryFullscreen.getSelectedItemPosition(), prePos));
+				Thread.sleep(100);
+				long diffTime = System.currentTimeMillis() - currentTime;
+				
+				if(diffTime%500<100){
+					simulateFlingGallery(mGalleryFullscreen, dragFrom, dragTo, 300);
+				}
+				assertTrue("Switching of an image takes to long", MAX_REACTION_TIME > diffTime);
+			}
+			
+			assertEquals("the gallery doesn't select the correct image", pos, mGalleryFullscreen.getSelectedItemPosition());
+			
+			GalleryImageView imageView = (GalleryImageView) mGalleryFullscreen.getSelectedView();
+			checkSelectedView(children.get(pos));
+			checkImageInformationIsntLoadedBeforImage();
+			if(pos%5==0) {
+				
+				for(ImageLoaderTask task:storedTask) {
+					//task.cancel(true);
+				}
+				storedTask.clear();
+				
+				checkImageLoaderTask(imageView);
+				checkImageInformationIsLoadedCorrectly(galleryObject, comments, tags);
+			} else {
+				if (!imageView.isLoaded()) {
+					galleryObject = (TestGalleryObject) imageView.getGalleryObject();
+					/*ImageLoaderTask imageLoaderTask = imageView.getImageLoaderTask();
+					storedTask.add(imageLoaderTask);
+					assertNotNull(
+							String.format(
+									"There is no imageLoaderTask initialized for the GalleryImageView %s",
+									imageView.getGalleryObject().getObjectId()),
+							imageLoaderTask);*/
+				}
+				//give gallery a second to adjust to prevent skipping an image...
+				Thread.sleep(1000);
+			}
+		}
+	}
+
 	public void testActivityStartWithOpeningInformations() throws Exception {
 		setupActivity(false);
 		checkStartUp(View.GONE);
@@ -259,23 +498,13 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 		TouchUtils.clickView(this, imageButton);
 		assertEquals("The ImageInformationPanel has wrong Visibility", View.VISIBLE, mImageInformationView.getVisibility());
 		
-		ExtractInformationTask task = mImageInformationView.getExtractionInfromationTask();
-		
-		if(task != null) {
-			task.get();
-			Thread.sleep(500);
-		}
-		
-		checkImageInformationIsLoaded(galleryObject);
-		checkTagAreLoaded(tags);
-		checkCommentsAreLoaded(comments);
+		ExtractInformationTask extractionTask;
+		checkImageInformationIsLoadedCorrectly(galleryObject, comments, tags);
 	}
 	
 	public void testActivityStartWithInformations() throws Exception {
-		setupActivity(true);
-		checkStartUp(View.VISIBLE);
-		GalleryImageView imageView = (GalleryImageView) mGalleryFullscreen.getSelectedView();
-		TestGalleryObject galleryObject = (TestGalleryObject) imageView.getGalleryObject();
+		List<TestGalleryObject> children = mCurrentGallery.getChildren();
+		TestGalleryObject galleryObject = children.get(0);
 		
 		List<GalleryObjectComment> comments = new ArrayList<GalleryObjectComment>(5);
 		comments.add(new TestGalleryObjectComment("Some Author","First Comment"));
@@ -295,16 +524,11 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 		
 		mWebGallery.setupGetDisplayObjectTagsCall(galleryObject, tags);
 		
-		ExtractInformationTask task = mImageInformationView.getExtractionInfromationTask();
+		setupActivity(true);
+		checkStartUp(View.VISIBLE);
 		
-		if(task != null) {
-			task.get();
-			Thread.sleep(500);
-		}
-		
-		checkImageInformationIsLoaded(galleryObject);
-		checkTagAreLoaded(tags);
-		checkCommentsAreLoaded(comments);
+		ExtractInformationTask extractionTask;
+		checkImageInformationIsLoadedCorrectly(galleryObject, comments, tags);
 	}
 	
 	
@@ -361,15 +585,42 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 	
 	private void checkImageLoaderTask(GalleryImageView galleryImageView) throws Exception {
 		if (!galleryImageView.isLoaded()) {
-			ImageLoaderTask imageLoaderTask = galleryImageView
-					.getImageLoaderTask();
-			assertNotNull(
+			GalleryObject galleryObject = galleryImageView.getGalleryObject();
+			GalleryDownloadObject downloadObject = galleryObject.getImage();
+			assertTrue(
 					String.format(
-							"There is no imageLoaderTask initialized for the GalleryImageView %s",
+							"The DownloadObject isn't enqueued for the gallerImageView %s",
 							galleryImageView.getGalleryObject().getObjectId()),
-					imageLoaderTask);
-			imageLoaderTask.get();
-			Thread.sleep(1000);
+					mImageLoaderTask.isDownloading(downloadObject));
+			if(mWebGallery.isDownloadWaitHandleActive()) {
+				
+				Log.d(CLASS_TAG, "Checking ExtractorTask");
+				ExtractInformationTask extractionTask = null;
+				long startTime = System.currentTimeMillis();
+				while(extractionTask == null && (System.currentTimeMillis()- startTime) < MAX_REACTION_TIME) {
+					extractionTask = mImageInformationView.getExtractionInfromationTask();
+				}
+				assertNotNull("There is no extraction Task", extractionTask);
+				assertTrue("The ExtractionTask is finish before the ImageLoaderTask returns", extractionTask.getStatus() != AsyncTask.Status.FINISHED);
+				
+				
+				
+				
+				Log.d(CLASS_TAG, "Release LoaderTask");
+				mWebGallery.releaseGetFileStream((TestDownloadObject) galleryObject.getImage());
+			}
+			long startTime = System.currentTimeMillis();
+			while(mImageLoaderTask.isDownloading(downloadObject) && (System.currentTimeMillis()- startTime) < MAX_REACTION_TIME) {
+				Thread.sleep(100);
+			}
+			assertFalse(String.format(
+							"The Download for the gallerImageView %s isn't finished within the given time",
+							galleryImageView.getGalleryObject().getObjectId()),mImageLoaderTask.isDownloading(downloadObject));
+			
+			startTime = System.currentTimeMillis();
+			while(!galleryImageView.isLoaded() && (System.currentTimeMillis()- startTime) < MAX_REACTION_TIME) {
+				Thread.sleep(100);
+			}
 			assertEquals(
 					String.format(
 							"The GalleryImageView %s is not loaded but the imageLoaderTask ist finished",
@@ -377,6 +628,41 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 					true, galleryImageView.isLoaded());
 		}
 	}
+	private void checkImageInformationIsntLoadedBeforImage() throws InterruptedException {
+		ExtractInformationTask extractionTask = null; 
+		long currentTime = System.currentTimeMillis();
+		while(extractionTask == null && (System.currentTimeMillis() - currentTime) < 1000) {
+			Thread.sleep(100);
+			extractionTask = mImageInformationView.getExtractionInfromationTask();
+		}
+		
+		assertNotNull("No ExtractionTask created",extractionTask);
+		assertNull("There is a TagLoaderTask, without a finished ExtractionTask", mImageInformationView.getTagLoaderTask());
+		assertNull("There is a CommentLoaderTask, without a finished ExtractionTask", mImageInformationView.getCommentLoaderTask());
+		ViewGroup rootView = (ViewGroup)mImageInformationView.findViewById(R.id.layoutComments);
+		assertEquals("ImageInformation - There are comments displayed befor the loadertask finished...", 0, rootView.getChildCount());
+	}
+
+	private void checkImageInformationIsLoadedCorrectly(
+			TestGalleryObject galleryObject,
+			List<GalleryObjectComment> comments, List<String> tags)
+			throws InterruptedException, ExecutionException, Exception {
+		ExtractInformationTask extractionTask = mImageInformationView.getExtractionInfromationTask();
+		if(extractionTask != null) {
+			extractionTask.get();
+			Thread.sleep(500);
+		}
+		
+		if(mWebGallery.isDownloadWaitHandleActive()) {
+			mWebGallery.releaseGetDisplayObjectComments(galleryObject);
+			mWebGallery.releaseGetGetDisplayObjectTags(galleryObject);
+		}
+		
+		checkImageInformationIsLoaded(galleryObject);
+		checkTagAreLoaded(tags);
+		checkCommentsAreLoaded(comments);
+	}
+
 	private void checkImageInformationIsLoaded(TestGalleryObject galleryObject) throws Exception {
 		checkEmbededInformationIsLoaded(galleryObject);
 		checkExifInformationIsLoaded();
@@ -387,6 +673,7 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 		assertEquals("ImageInformation - Title is set wrong", galleryObject.getTitle(), textView.getText().toString());
 		
 		textView = (TextView) mImageInformationView.findViewById(R.id.textUploadDate);
+		Log.d(CLASS_TAG,String.format("%s - %s",galleryObject.getDateUploaded().toLocaleString(), textView.getText().toString()));
 		assertEquals("ImageInformation - UploadDate is set wrong", galleryObject.getDateUploaded().toLocaleString(), textView.getText().toString());
 	}
 
@@ -411,7 +698,12 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 		CommentLoaderTask commentLoaderTask = mImageInformationView.getCommentLoaderTask();
 		if(commentLoaderTask != null) {
 			commentLoaderTask.get();
-			Thread.sleep(500);
+			long currentTime = System.currentTimeMillis();
+			while(mImageInformationView.getCommentLoaderTask() != null) {
+				Thread.sleep(100);
+				long diffTime = System.currentTimeMillis() - currentTime;
+				assertTrue("Handling of commentLoaderTask-Result takes to long..", MAX_REACTION_TIME > diffTime);
+			}
 		}
 		ViewGroup rootView = (ViewGroup)mImageInformationView.findViewById(R.id.layoutComments);
 		assertEquals("ImageInformation - Commentscount isn't correct.", comments.size(), rootView.getChildCount());
@@ -434,7 +726,12 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 		TagLoaderTask tagLoaderTask = mImageInformationView.getTagLoaderTask();
 		if(tagLoaderTask != null) {
 			tagLoaderTask.get();
-			Thread.sleep(500);
+			long currentTime = System.currentTimeMillis();
+			while(mImageInformationView.getTagLoaderTask() != null) {
+				Thread.sleep(100);
+				long diffTime = System.currentTimeMillis() - currentTime;
+				assertTrue("Handling of tagLoaderTask-Result takes to long..", MAX_REACTION_TIME > diffTime);
+			}
 		}
 		
 		StringBuilder stringBuilder = new StringBuilder(tags.size()*10);
@@ -455,9 +752,9 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 	
 		List<TestGalleryObject> children = new ArrayList<TestGalleryObject>(
 				GALLERY_SAMPLE_SIZE);
-	
+		Random random = new Random(); 
 		for (int i = 0; i < GALLERY_SAMPLE_SIZE; i++) {
-			String objectId = String.format("TestGalObject %s", i);
+			String objectId = String.format("TestGalObject %d-%d", i,random.nextInt(10000));
 			Date currentDate = new Date(System.currentTimeMillis());
 	
 			children.add(new TestGalleryObject(objectId, objectId,
@@ -482,6 +779,7 @@ ActivityInstrumentationTestCase2<ImageViewActivity> {
 		mInstrumentation.sendPointerSync(startEvent);
 		mInstrumentation.sendPointerSync(stopEvent);
 	}
+	
 	private void simulateFlingGallery(Gallery gallery, PointF from, PointF to, int time)  {
 		long startTime = SystemClock.uptimeMillis()-time;
 		MotionEvent startEvent = MotionEvent.obtain(startTime, startTime, MotionEvent.ACTION_DOWN, from.x, from.y, 0);
