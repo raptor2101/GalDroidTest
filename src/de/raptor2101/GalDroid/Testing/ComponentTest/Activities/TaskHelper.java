@@ -20,5 +20,5 @@ public abstract class TaskHelper {
 	Assert.fail(assertMessage);
     }
 
-    public abstract boolean checkCondition(long timeElapsed);
+    protected abstract boolean checkCondition(long timeElapsed);
 }
