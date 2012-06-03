@@ -188,7 +188,7 @@ public class TestWebGallery implements WebGallery {
 		try {
 		    semaphore.acquire();
 		} catch (InterruptedException e) {
-		    Assert.fail(e.getMessage());
+		    return null;
 		}
 
 		Log.d(CLASS_TAG, String.format("getFileStream - semaphore released for %s", testDownloadObject));
@@ -269,7 +269,7 @@ public class TestWebGallery implements WebGallery {
 	mDownloadWaitHandle = false;
     }
 
-    private void AquireWaitHandle(String source, GalleryObject galleryObject, Map<GalleryObject, Semaphore> mapHandles) {
+    private void AquireWaitHandle(String source, GalleryObject galleryObject, Map<GalleryObject, Semaphore> mapHandles) throws IOException {
 	if (mDownloadWaitHandle) {
 	    Semaphore semaphore;
 	    synchronized (mapHandles) {
@@ -285,7 +285,7 @@ public class TestWebGallery implements WebGallery {
 	    try {
 		semaphore.acquire();
 	    } catch (InterruptedException e) {
-		Assert.fail(e.getMessage());
+		throw new IOException("Interupt exception was thrown",e);
 	    }
 	    Log.d(CLASS_TAG, String.format("%s - semaphore released for %s", source, galleryObject));
 	}
