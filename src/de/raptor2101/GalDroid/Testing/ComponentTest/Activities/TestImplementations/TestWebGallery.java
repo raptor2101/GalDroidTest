@@ -257,7 +257,7 @@ public class TestWebGallery implements WebGallery {
   public List<TestDownloadObject> getRequestedDownloadObjects() {
     synchronized (mRequestedObjects) {
       List<TestDownloadObject> returnList = new ArrayList<TestDownloadObject>(mRequestedObjects.size());
-      for(TestDownloadObject object:mRequestedObjects) {
+      for (TestDownloadObject object : mRequestedObjects) {
         returnList.add(object);
       }
       return returnList;

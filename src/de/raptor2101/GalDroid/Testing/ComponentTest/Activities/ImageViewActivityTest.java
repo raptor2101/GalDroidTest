@@ -198,13 +198,13 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
     Thread.sleep(2000);
     List<TestDownloadObject> requestetObjects = mWebGallery.getRequestedDownloadObjects();
     int size = requestetObjects.size();
-    if(size > 1) {
+    if (size > 1) {
       for (int outerIndex = 0; outerIndex < size; outerIndex++) {
         TestDownloadObject outerObject = requestetObjects.get(outerIndex);
         Log.d(CLASS_TAG, String.format("Requested DownloadObject: %s", outerObject));
         for (int innerIndex = outerIndex + 1; innerIndex < size; innerIndex++) {
           TestDownloadObject innerObject = requestetObjects.get(innerIndex);
-  
+
           assertFalse(String.format("%s is requested twice", outerIndex), outerObject.equals(innerObject));
         }
       }
@@ -357,7 +357,7 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
     checkImageLoaderTask(imageView);
 
     checkImageInformationIsLoadedCorrectly(currentObject, comments, tags);
-    
+
     checkForUneededDownloads();
   }
 
@@ -378,7 +378,7 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
       checkSelectedView(children.get(pos));
       checkImageLoaderTask(imageView);
     }
-    
+
     checkForUneededDownloads();
   }
 
@@ -427,7 +427,7 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
 
       checkImageInformationIsLoadedCorrectly(galleryObject, comments, tags);
     }
-    
+
     checkForUneededDownloads();
   }
 
@@ -509,7 +509,7 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
 
       checkImageInformationIsLoadedCorrectly(galleryObject, comments, tags);
     }
-    
+
     checkForUneededDownloads();
   }
 
@@ -627,7 +627,7 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
         Thread.sleep(1000);
       }
     }
-    
+
     checkForUneededDownloads();
   }
 
