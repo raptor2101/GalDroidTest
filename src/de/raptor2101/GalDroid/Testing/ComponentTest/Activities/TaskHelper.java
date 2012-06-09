@@ -3,7 +3,7 @@ package de.raptor2101.GalDroid.Testing.ComponentTest.Activities;
 import junit.framework.Assert;
 
 public abstract class TaskHelper {
-  public static final int MAX_WAIT_TIME = 10000;
+  public static final int MAX_WAIT_TIME = 20000;
 
   public void waitForExecution(String assertMessage) throws InterruptedException {
     long startTime = System.currentTimeMillis();

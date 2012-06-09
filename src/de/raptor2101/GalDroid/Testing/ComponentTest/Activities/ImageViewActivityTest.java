@@ -27,13 +27,13 @@ import android.widget.TextView;
 import de.raptor2101.GalDroid.R;
 import de.raptor2101.GalDroid.Activities.GalDroidApp;
 import de.raptor2101.GalDroid.Activities.ImageViewActivity;
+import de.raptor2101.GalDroid.Activities.Helpers.ImageAdapter;
+import de.raptor2101.GalDroid.Activities.Views.GalleryImageView;
 import de.raptor2101.GalDroid.Activities.Views.ImageInformationView;
 import de.raptor2101.GalDroid.Testing.ComponentTest.Activities.TestImplementations.TestDownloadObject;
 import de.raptor2101.GalDroid.Testing.ComponentTest.Activities.TestImplementations.TestGalleryObject;
 import de.raptor2101.GalDroid.Testing.ComponentTest.Activities.TestImplementations.TestGalleryObjectComment;
 import de.raptor2101.GalDroid.Testing.ComponentTest.Activities.TestImplementations.TestWebGallery;
-import de.raptor2101.GalDroid.WebGallery.GalleryImageView;
-import de.raptor2101.GalDroid.WebGallery.ImageAdapter;
 import de.raptor2101.GalDroid.WebGallery.ImageCache;
 import de.raptor2101.GalDroid.WebGallery.Interfaces.GalleryDownloadObject;
 import de.raptor2101.GalDroid.WebGallery.Interfaces.GalleryObject;
@@ -41,7 +41,7 @@ import de.raptor2101.GalDroid.WebGallery.Interfaces.GalleryObjectComment;
 import de.raptor2101.GalDroid.WebGallery.Tasks.GalleryLoaderTask;
 import de.raptor2101.GalDroid.WebGallery.Tasks.ImageInformationLoaderTask;
 import de.raptor2101.GalDroid.WebGallery.Tasks.ImageLoaderTask;
-import de.raptor2101.GalDroid.WebGallery.Tasks.WorkerTaskInterface.Status;
+import de.raptor2101.GalDroid.WebGallery.Tasks.TaskInterface.Status;
 
 public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<ImageViewActivity> {
   private static final String CLASS_TAG = "ImageViewActivityTest";
@@ -55,6 +55,7 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
 
   private ImageViewActivity mActivity;
   private TestWebGallery mWebGallery;
+  private ImageCache mImageCache;
 
   private Instrumentation mInstrumentation;
 
@@ -74,8 +75,8 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
     super.setUp();
     mInstrumentation = getInstrumentation();
 
-    ImageCache galleryCache = new ImageCache(this.getInstrumentation().getTargetContext());
-    for (File file : galleryCache.getCacheDir().listFiles()) {
+    mImageCache = new ImageCache(this.getInstrumentation().getTargetContext());
+    for (File file : mImageCache.getCacheDir().listFiles()) {
       try {
         file.delete();
       } catch (Exception e) {
@@ -88,16 +89,29 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
 
     GalDroidApp appContext = (GalDroidApp) mInstrumentation.getTargetContext().getApplicationContext();
     appContext.setWebGallery(mWebGallery);
-    galleryCache = appContext.getImageCache();
+    mImageCache = appContext.getImageCache();
 
-    if (galleryCache != null) {
-      galleryCache.clearCachedBitmaps(false);
-    }
+    
   }
 
   @Override
   protected void tearDown() throws Exception {
+    Log.d(CLASS_TAG,String.format("TearDown Called",mActivity));
+    mInstrumentation.runOnMainSync(new Runnable() {
+      
+      @Override
+      public void run() {
+        mInstrumentation.callActivityOnStop(mActivity);
+        mActivity.finish();
+      }
+    });
+    
     mActivity = null;
+    
+    if (mImageCache != null) {
+      mImageCache.clearCachedBitmaps(true);
+    }
+    
     super.tearDown();
   }
 
@@ -331,7 +345,7 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
 
     Log.d(CLASS_TAG, "Do a image-change before the task finished");
     PointF dragFrom = new PointF(1000, 358);
-    PointF dragTo = new PointF(500, 358);
+    PointF dragTo = new PointF(400, 358);
     flingGalleryAndCheckImageChange(dragFrom, dragTo);
 
     TestGalleryObject currentObject = children.get(1);
@@ -402,10 +416,6 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
 
     checkImageInformationIsLoadedCorrectly(galleryObject, comments, tags);
 
-    // fastForward ... to the last image...
-    PointF dragFrom = new PointF(1000, 358);
-    PointF dragTo = new PointF(500, 358);
-
     for (int pos = 1; pos < 5; pos++) {
       galleryObject = children.get(pos);
       Log.d(CLASS_TAG, String.format("Simulating switching to %s", galleryObject));
@@ -418,9 +428,9 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
 
       mWebGallery.setupGetDisplayObjectCommentsCall(galleryObject, comments);
       mWebGallery.setupGetDisplayObjectTagsCall(galleryObject, tags);
-
-      flingGalleryAndCheckImageChange(dragFrom, dragTo);
-
+      
+      selectImage(mGalleryFullscreen, pos);
+      
       GalleryImageView imageView = (GalleryImageView) mGalleryFullscreen.getSelectedView();
       checkSelectedView(children.get(pos));
       checkImageLoaderTask(imageView);
@@ -484,10 +494,6 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
 
     checkImageInformationIsLoadedCorrectly(galleryObject, comments, tags);
 
-    // fastForward ... to the last image...
-    PointF dragFrom = new PointF(1000, 358);
-    PointF dragTo = new PointF(500, 358);
-
     for (int pos = 1; pos < 5; pos++) {
       galleryObject = children.get(pos);
       Log.d(CLASS_TAG, String.format("Simulating switching to %s", galleryObject));
@@ -500,7 +506,7 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
       mWebGallery.setupGetDisplayObjectCommentsCall(galleryObject, comments);
       mWebGallery.setupGetDisplayObjectTagsCall(galleryObject, tags);
 
-      flingGalleryAndCheckImageChange(dragFrom, dragTo);
+      selectImage(mGalleryFullscreen, pos);
 
       GalleryImageView imageView = (GalleryImageView) mGalleryFullscreen.getSelectedView();
       checkSelectedView(children.get(pos));
@@ -517,7 +523,7 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
     Log.d(CLASS_TAG, "Prepare TestEnvironment");
     List<TestGalleryObject> children = mCurrentGallery.getChildren();
     TestGalleryObject galleryObject = children.get(0);
-
+    
     List<GalleryObjectComment> comments = new ArrayList<GalleryObjectComment>(1);
     List<String> tags = new ArrayList<String>(2);
 
@@ -552,19 +558,8 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
       loaderTask.get();
     }
 
-    // Whait till the adapter gets loaded
-    ImageAdapter adapter = (ImageAdapter) mGalleryFullscreen.getAdapter();
-
-    long currentTime = System.currentTimeMillis();
-    Log.d(CLASS_TAG, "wait till adapter is loaded");
-    while (!adapter.isLoaded()) {
-      Thread.sleep(100);
-      long diffTime = System.currentTimeMillis() - currentTime;
-      Log.d("ImageViewActivityTest", String.format("Test %d", diffTime));
-      assertTrue("Loading of the GalleryImageAdapter takes to long", 10000 > diffTime);
-    }
-
-    Thread.sleep(1000);
+    checkImageAdapterIsLoaded();
+    checkSelectedViewIsNotNull();
 
     GalleryImageView selectedView = checkSelectedView(mCurrentVisibleChild);
 
@@ -576,14 +571,9 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
 
     checkImageInformationIsLoadedCorrectly(galleryObject, comments, tags);
 
-    // fastForward ... to the last image...
-    PointF dragFrom = new PointF(1000, 358);
-    PointF dragTo = new PointF(500, 358);
-
-    List<ImageLoaderTask> storedTask = new ArrayList<ImageLoaderTask>(10);
-
     for (int pos = 1; pos < 30; pos++) {
       galleryObject = children.get(pos);
+      final GalleryDownloadObject downloadObject = galleryObject.getImage();
       Log.d(CLASS_TAG, String.format("Simulating switching to %s", galleryObject));
 
       if (pos % 5 == 0) {
@@ -596,7 +586,7 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
         mWebGallery.setupGetDisplayObjectTagsCall(galleryObject, tags);
       }
 
-      flingGalleryAndCheckImageChange(dragFrom, dragTo);
+      selectImage(mGalleryFullscreen, pos);
 
       assertEquals("the gallery doesn't select the correct image", pos, mGalleryFullscreen.getSelectedItemPosition());
 
@@ -604,31 +594,48 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
       checkSelectedView(children.get(pos));
       checkImageInformationIsntLoadedBeforImage();
       if (pos % 5 == 0) {
-
-        for (ImageLoaderTask task : storedTask) {
-          // task.cancel(true);
+        TaskHelper taskHelper = new TaskHelper() {
+          protected boolean checkCondition(long timeElapsed) {
+            return mImageLoaderTask.isDownloading(downloadObject);
+          }
+        };
+        taskHelper.waitForExecution("ImageDownload isn'T enqueued");
+        
+        while(mImageLoaderTask.getActiveDownload() == null || !downloadObject.equals(mImageLoaderTask.getActiveDownload().getDownloadObject())) {
+          if(mImageLoaderTask.getActiveDownload()!=null) {
+            mImageLoaderTask.cancelActiveDownload(true);
+          }
         }
-        storedTask.clear();
-
+        
+        
         checkImageLoaderTask(imageView);
         checkImageInformationIsLoadedCorrectly(galleryObject, comments, tags);
-      } else {
-        if (!imageView.isLoaded()) {
-          galleryObject = (TestGalleryObject) imageView.getGalleryObject();
-          /*
-           * ImageLoaderTask imageLoaderTask = imageView.getImageLoaderTask();
-           * storedTask.add(imageLoaderTask); assertNotNull( String.format(
-           * "There is no imageLoaderTask initialized for the GalleryImageView %s"
-           * , imageView.getGalleryObject().getObjectId()), imageLoaderTask);
-           */
-        }
-        // give gallery a second to adjust to prevent skipping an
-        // image...
-        Thread.sleep(1000);
       }
     }
 
     checkForUneededDownloads();
+  }
+
+  private void selectImage(final Gallery gallery,final int pos) throws Exception {
+    final GalleryObject targetObject = mCurrentGallery.getChildren().get(pos);
+    mInstrumentation.runOnMainSync(new Runnable() {
+      
+      @Override
+      public void run() {
+        gallery.setSelection(pos);
+      }
+    });
+    
+    TaskHelper taskHelper = new TaskHelper() {
+      protected boolean checkCondition(long timeElapsed) {
+        GalleryImageView view = (GalleryImageView) gallery.getSelectedView();
+        if(view == null) {
+          return false;
+        }
+        return view.getGalleryObject().equals(targetObject);
+      }
+    };
+    taskHelper.waitForExecution("Selecting an Image takes to long.");
   }
 
   private void flingGalleryAndCheckImageChange(final PointF dragFrom, final PointF dragTo) throws InterruptedException {
@@ -639,8 +646,8 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
       @Override
       protected boolean checkCondition(long diffTime) {
 
-        if (diffTime % (MAX_WAIT_TIME / 10) < 100) {
-          simulateFlingGallery(mGalleryFullscreen, dragFrom, dragTo, 350);
+        if (diffTime % 1000 < 100) {
+          simulateFlingGallery(mGalleryFullscreen, dragFrom, dragTo, 500);
         }
         int currentPos = mGalleryFullscreen.getSelectedItemPosition();
         Log.d(CLASS_TAG, String.format("FlingGallery currentPos: %d lastPos: %d", currentPos, prePos));
@@ -781,12 +788,15 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
 
   private void checkImageInformationIsLoadedCorrectly(final TestGalleryObject galleryObject, List<GalleryObjectComment> comments, List<String> tags) throws InterruptedException, ExecutionException, Exception {
     if (mWebGallery.isDownloadWaitHandleActive()) {
-      ImageInformationLoaderTask task = mImageInformationView.getImageInformationLoaderTask();
-      assertTrue(String.format("%s isn't enqueued for loading ImageInformation altough the ImageLoaderTask is finished", galleryObject), task.isLoading(galleryObject));
-
+      final ImageInformationLoaderTask task = mImageInformationView.getImageInformationLoaderTask();
       TaskHelper taskHelper = new TaskHelper() {
+        protected boolean checkCondition(long diffTime) {
+          return task.isLoading(galleryObject);
+        }
+      };
+      taskHelper.waitForExecution(String.format("%s isn't enqueued for loading ImageInformation in the given time, altough the ImageLoaderTask is finished", galleryObject));
 
-        @Override
+      taskHelper = new TaskHelper() {
         protected boolean checkCondition(long diffTime) {
           return mImageInformationView.areImageInformationsLoaded();
         }
