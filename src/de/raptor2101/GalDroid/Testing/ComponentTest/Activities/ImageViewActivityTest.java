@@ -1,6 +1,7 @@
 package de.raptor2101.GalDroid.Testing.ComponentTest.Activities;
 
 import java.io.File;
+import java.security.NoSuchAlgorithmException;
 import java.security.acl.LastOwnerException;
 import java.text.DateFormat;
 import java.util.ArrayList;
@@ -30,6 +31,7 @@ import de.raptor2101.GalDroid.Activities.ImageViewActivity;
 import de.raptor2101.GalDroid.Activities.Helpers.ImageAdapter;
 import de.raptor2101.GalDroid.Activities.Views.GalleryImageView;
 import de.raptor2101.GalDroid.Activities.Views.ImageInformationView;
+import de.raptor2101.GalDroid.Config.GalDroidPreference;
 import de.raptor2101.GalDroid.Testing.ComponentTest.Activities.TestImplementations.TestDownloadObject;
 import de.raptor2101.GalDroid.Testing.ComponentTest.Activities.TestImplementations.TestGalleryObject;
 import de.raptor2101.GalDroid.Testing.ComponentTest.Activities.TestImplementations.TestGalleryObjectComment;
@@ -74,15 +76,9 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
     Log.d("ImageViewActivityTest", "Setup Called");
     super.setUp();
     mInstrumentation = getInstrumentation();
-
-    mImageCache = new ImageCache(this.getInstrumentation().getTargetContext());
-    for (File file : mImageCache.getCacheDir().listFiles()) {
-      try {
-        file.delete();
-      } catch (Exception e) {
-        // if something goes wrong... ignore it
-      }
-    }
+    GalDroidPreference.Initialize(mInstrumentation.getTargetContext());
+    
+    deleteCachedFiles();
 
     Resources recources = mInstrumentation.getContext().getResources();
     mWebGallery = createTestWebGallery(recources);
@@ -92,6 +88,21 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
     mImageCache = appContext.getImageCache();
 
     
+  }
+
+  private void deleteCachedFiles() throws NoSuchAlgorithmException {
+    mImageCache = new ImageCache(this.getInstrumentation().getTargetContext());
+    for (File file : mImageCache.getCacheDir().listFiles()) {
+      try {
+        file.delete();
+      } catch (Exception e) {
+        // if something goes wrong... ignore it
+      }
+    }
+    
+    GalDroidPreference asyncAccess = GalDroidPreference.GetAsyncAccess();
+    asyncAccess.clearCacheTable();
+    asyncAccess.close();
   }
 
   @Override
@@ -111,6 +122,7 @@ public class ImageViewActivityTest extends ActivityInstrumentationTestCase2<Imag
     if (mImageCache != null) {
       mImageCache.clearCachedBitmaps(true);
     }
+    deleteCachedFiles();
     
     super.tearDown();
   }
